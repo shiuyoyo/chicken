@@ -1,0 +1,1206 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Noto+Serif+TC:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#0a0a08;color:#f0ead6;font-family:'Noto Serif TC','Playfair Display',serif;overflow-x:hidden;}
+
+  ::-webkit-scrollbar{width:3px;}
+  ::-webkit-scrollbar-thumb{background:#888;}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+  @keyframes ripple{from{transform:scale(0);opacity:0.6;}to{transform:scale(4);opacity:0;}}
+  @keyframes countUp{from{opacity:0;transform:scale(0.8);}to{opacity:1;transform:scale(1);}}
+  @keyframes slideR{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
+  @keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+  @keyframes shimmer{0%{background-position:200% center;}100%{background-position:-200% center;}}
+  @keyframes confetti-fall{to{transform:translateY(110vh) rotate(720deg);opacity:0;}}
+  @keyframes barFill{from{width:0;}to{width:var(--target-w);}}
+  @keyframes chef-enter{from{opacity:0;transform:scale(0.9) translateY(20px);}to{opacity:1;transform:scale(1) translateY(0);}}
+
+  .app{min-height:100vh;}
+
+  /* HEADER */
+  .header{
+    background:#0a0a08;
+    border-bottom:1px solid #2a2a20;
+    padding:0 20px;
+    position:sticky;top:0;z-index:100;
+  }
+  .header-inner{max-width:960px;margin:0 auto;}
+  .header-top{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 0 0;
+  }
+  .logo-mark{
+    width:42px;height:42px;
+    background:#f0ead6;
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;flex-shrink:0;
+  }
+  .title-block{}
+  .title-main{
+    font-family:'Playfair Display',serif;
+    font-size:clamp(14px,3vw,20px);
+    font-weight:900;
+    color:#f0ead6;
+    letter-spacing:-0.5px;
+    line-height:1.1;
+  }
+  .title-sub{
+    font-family:'Space Mono',monospace;
+    font-size:9px;
+    color:#666;
+    letter-spacing:3px;
+    margin-top:3px;
+  }
+  .live-badge{
+    margin-left:auto;
+    display:flex;align-items:center;gap:5px;
+    font-family:'Space Mono',monospace;
+    font-size:9px;color:#c0392b;letter-spacing:2px;
+  }
+  .live-dot{
+    width:6px;height:6px;border-radius:50%;background:#c0392b;
+    animation:pulse 1s ease infinite;
+  }
+  .tabs{display:flex;gap:0;padding-top:10px;}
+  .tab-btn{
+    background:none;border:none;cursor:pointer;
+    padding:10px 18px;
+    font-family:'Noto Serif TC',serif;
+    font-size:clamp(11px,2.5vw,13px);
+    color:#555;
+    border-bottom:2px solid transparent;
+    transition:all 0.2s;
+    white-space:nowrap;
+  }
+  .tab-btn.active{color:#f0ead6;border-bottom-color:#f0ead6;}
+  .tab-btn:hover:not(.active){color:#aaa;}
+
+  /* CONTENT */
+  .content{max-width:960px;margin:0 auto;padding:24px 16px 60px;}
+
+  /* ── TAB 0: MAP ── */
+  .map-wrap{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;}
+  .map-panel{
+    flex-shrink:0;
+    background:#111108;
+    border:1px solid #2a2a20;
+    padding:18px;
+  }
+  .map-hint{
+    font-family:'Space Mono',monospace;
+    font-size:9px;letter-spacing:3px;color:#444;
+    text-align:center;margin-bottom:14px;
+  }
+  .zone-info{flex:1;min-width:240px;}
+  .empty-state{
+    height:300px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid #1e1e14;
+    color:#333;text-align:center;gap:10px;
+  }
+  .empty-icon{font-size:36px;opacity:0.3;}
+  .empty-text{font-size:13px;line-height:1.8;color:#444;}
+
+  .zone-header{
+    padding:16px 18px;
+    background:#111108;
+    border:1px solid #2a2a20;
+    border-bottom:none;
+  }
+  .zone-title-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .zone-emoji-box{
+    width:36px;height:36px;
+    background:#1a1a10;
+    border:1px solid #3a3a28;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;flex-shrink:0;
+  }
+  .zone-name{font-size:15px;font-weight:700;flex:1;line-height:1.2;}
+  .zone-desc{font-size:11px;color:#666;line-height:1.6;}
+  .close-btn{background:none;border:none;color:#444;cursor:pointer;font-size:16px;padding:4px;}
+  .zone-tags{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .zone-tag{
+    font-family:'Space Mono',monospace;
+    font-size:9px;letter-spacing:1px;
+    padding:3px 10px;
+    border:1px solid #3a3a28;
+    color:#666;
+  }
+
+  .booth-grid-wrap{
+    border:1px solid #2a2a20;border-top:none;
+    padding:12px;max-height:400px;overflow-y:auto;
+    background:#0d0d0a;
+  }
+  .booth-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .booth-card{
+    padding:10px 12px;
+    border:1px solid #1e1e14;
+    background:#111108;
+    cursor:pointer;
+    transition:all 0.15s;
+  }
+  .booth-card:hover{background:#1a1a10;border-color:#3a3a28;}
+  .booth-num{
+    font-family:'Space Mono',monospace;
+    font-size:9px;letter-spacing:2px;color:#666;margin-bottom:4px;
+  }
+  .booth-name{font-size:12px;font-weight:700;color:#f0ead6;margin-bottom:3px;line-height:1.3;}
+  .booth-item{font-size:10px;color:#555;}
+  .booth-votes{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:6px;
+  }
+  .booth-v{font-family:'Space Mono',monospace;font-size:10px;color:#444;}
+  .booth-bar{height:2px;background:#222;flex:1;margin-left:8px;overflow:hidden;}
+  .booth-bar-fill{height:100%;background:#f0ead6;transition:width 0.5s;}
+
+  .legend-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;justify-content:center;}
+  .legend-pill{
+    display:flex;align-items:center;gap:6px;
+    padding:4px 12px;
+    border:1px solid #2a2a20;
+    cursor:pointer;font-size:11px;color:#555;
+    transition:all 0.2s;background:#111108;
+  }
+  .legend-pill:hover,.legend-pill.active{color:#f0ead6;border-color:#666;}
+  .legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+
+  .feature-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:20px;}
+  .feature-card{padding:14px 16px;border:1px solid #2a2a20;background:#111108;}
+  .fc-icon{font-size:18px;margin-bottom:8px;}
+  .fc-title{font-size:12px;font-weight:700;color:#c8a951;margin-bottom:5px;}
+  .fc-desc{font-size:10px;color:#555;line-height:1.7;}
+
+  /* ── TAB 1: CHEFS ── */
+  .chefs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;}
+  .chef-card{
+    border:1px solid #2a2a20;
+    background:#0d0d0a;
+    overflow:hidden;
+    cursor:pointer;
+    transition:all 0.2s;
+    animation:chef-enter 0.4s ease both;
+  }
+  .chef-card:hover{border-color:#555;background:#111108;}
+  .chef-card.selected{border-color:#f0ead6;background:#111108;}
+  .chef-portrait{
+    height:140px;
+    display:flex;align-items:flex-end;
+    padding:14px;
+    position:relative;
+    overflow:hidden;
+  }
+  .chef-portrait-bg{
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:72px;opacity:0.07;
+  }
+  .chef-rank{
+    position:absolute;top:12px;right:12px;
+    font-family:'Space Mono',monospace;
+    font-size:10px;letter-spacing:2px;
+    padding:4px 10px;
+    background:#0a0a08;
+    border:1px solid #3a3a28;
+    color:#c8a951;
+  }
+  .chef-name-block{position:relative;z-index:1;}
+  .chef-stars{font-size:11px;color:#c8a951;margin-bottom:4px;}
+  .chef-name{
+    font-family:'Playfair Display',serif;
+    font-size:18px;font-weight:700;
+    color:#f0ead6;line-height:1.1;
+  }
+  .chef-title{font-size:10px;color:#666;margin-top:3px;font-family:'Space Mono',monospace;letter-spacing:1px;}
+  .chef-body{padding:14px;}
+  .chef-tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .chef-tag{
+    font-family:'Space Mono',monospace;
+    font-size:8px;letter-spacing:1px;
+    padding:2px 8px;border:1px solid #2a2a20;color:#555;
+  }
+  .chef-bio{font-size:11px;color:#666;line-height:1.8;margin-bottom:10px;}
+  .chef-special{
+    padding:8px 12px;
+    background:#1a1a10;
+    border-left:2px solid #c8a951;
+    font-size:10px;color:#c8a951;
+    font-style:italic;
+    line-height:1.7;
+  }
+
+  .chef-detail-panel{
+    border:1px solid #f0ead6;
+    background:#111108;
+    padding:24px;
+    margin-top:16px;
+    animation:fadeUp 0.3s ease;
+  }
+  .cdp-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
+  .cdp-avatar{
+    width:64px;height:64px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:36px;
+    background:#1a1a10;border:1px solid #3a3a28;
+  }
+  .cdp-name{
+    font-family:'Playfair Display',serif;
+    font-size:24px;font-weight:900;color:#f0ead6;
+    line-height:1.1;margin-bottom:4px;
+  }
+  .cdp-sub{font-family:'Space Mono',monospace;font-size:10px;color:#666;letter-spacing:2px;}
+  .cdp-body{display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-width:200px;}
+  .cdp-stat{padding:12px;background:#0a0a08;border:1px solid #1e1e14;}
+  .cdp-stat-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:#444;margin-bottom:4px;}
+  .cdp-stat-val{font-size:16px;font-weight:700;color:#f0ead6;}
+  .cdp-quote{
+    padding:16px 20px;
+    border:1px solid #2a2a20;
+    border-left:3px solid #f0ead6;
+    font-size:13px;font-style:italic;color:#aaa;line-height:1.9;
+    margin-top:16px;
+  }
+  .cdp-criteria{margin-top:16px;}
+  .cdp-crit-title{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;color:#444;margin-bottom:10px;}
+  .cdp-crit-item{
+    display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  }
+  .cdp-crit-name{font-size:12px;color:#888;width:80px;flex-shrink:0;}
+  .cdp-crit-bar{flex:1;height:3px;background:#1a1a10;}
+  .cdp-crit-fill{height:100%;background:#f0ead6;transition:width 0.8s ease;}
+  .cdp-crit-score{font-family:'Space Mono',monospace;font-size:10px;color:#555;width:24px;text-align:right;}
+
+  /* ── TAB 2: VOTE ── */
+  .vote-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+  @media(max-width:600px){.vote-layout{grid-template-columns:1fr;}}
+  .vote-card{padding:22px;border:1px solid #2a2a20;background:#0d0d0a;}
+  .vote-title{
+    font-family:'Playfair Display',serif;
+    font-size:18px;font-weight:900;color:#f0ead6;margin-bottom:4px;
+  }
+  .vote-hint{font-size:11px;color:#555;line-height:1.7;margin-bottom:22px;}
+  .step-label{
+    font-family:'Space Mono',monospace;
+    font-size:9px;letter-spacing:3px;color:#444;margin-bottom:8px;
+  }
+  .vote-select{
+    width:100%;padding:10px 14px;
+    background:#111108;
+    border:1px solid #2a2a20;
+    color:#f0ead6;font-size:13px;
+    font-family:'Noto Serif TC',serif;
+    outline:none;cursor:pointer;margin-bottom:18px;
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;
+  }
+  .star-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .star-btn{
+    font-size:28px;background:none;border:none;cursor:pointer;
+    transition:transform 0.1s,filter 0.1s;
+    filter:grayscale(1) opacity(0.2);
+    padding:2px;
+  }
+  .star-btn.active{filter:none;}
+  .star-btn:hover{transform:scale(1.2);}
+  .star-label{font-size:11px;color:#666;margin-left:4px;}
+  .qr-hint{
+    display:flex;gap:12px;align-items:center;
+    border:1px solid #1e1e14;padding:10px 14px;
+    margin:16px 0;background:#0a0a08;
+  }
+  .qr-icon{
+    width:44px;height:44px;flex-shrink:0;
+    background:#1a1a10;border:1px dashed #333;
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+  }
+  .qr-text-t{font-size:12px;font-weight:700;color:#aaa;margin-bottom:2px;}
+  .qr-text-s{font-size:10px;color:#444;line-height:1.6;}
+  .vote-submit{
+    width:100%;padding:13px;
+    background:#f0ead6;
+    color:#0a0a08;
+    font-family:'Playfair Display',serif;
+    font-size:14px;font-weight:700;
+    border:none;cursor:pointer;
+    transition:all 0.2s;
+    position:relative;overflow:hidden;
+  }
+  .vote-submit:disabled{background:#1a1a10;color:#333;cursor:not-allowed;}
+  .vote-submit:not(:disabled):hover{background:#fff;}
+  .ripple{
+    position:absolute;border-radius:50%;
+    background:rgba(0,0,0,0.3);
+    animation:ripple 0.6s linear forwards;
+    pointer-events:none;
+  }
+  .success-state{text-align:center;padding:40px 16px;animation:countUp 0.4s ease;}
+  .success-icon{font-size:48px;margin-bottom:14px;}
+  .success-title{
+    font-family:'Playfair Display',serif;
+    font-size:20px;font-weight:700;color:#f0ead6;margin-bottom:6px;
+  }
+  .success-sub{font-size:11px;color:#555;}
+
+  .how-card{padding:18px;border:1px solid #2a2a20;background:#0d0d0a;margin-bottom:12px;}
+  .how-title{
+    font-family:'Space Mono',monospace;
+    font-size:10px;letter-spacing:3px;color:#666;margin-bottom:14px;
+  }
+  .how-step{display:flex;gap:12px;margin-bottom:12px;align-items:flex-start;}
+  .how-num{
+    width:24px;height:24px;flex-shrink:0;
+    border:1px solid #2a2a20;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Mono',monospace;font-size:10px;color:#666;
+  }
+  .how-step-t{font-size:12px;font-weight:700;color:#aaa;margin-bottom:2px;}
+  .how-step-d{font-size:10px;color:#444;line-height:1.6;}
+  .award-card{
+    padding:16px;border:1px solid #c8a951;background:#0a0a06;
+    text-align:center;
+  }
+  .award-icon{font-size:28px;margin-bottom:8px;}
+  .award-title{
+    font-family:'Playfair Display',serif;
+    font-size:14px;font-weight:700;color:#c8a951;margin-bottom:4px;
+  }
+  .award-desc{font-size:10px;color:#666;line-height:1.7;}
+
+  /* ── TAB 3: RANKINGS ── */
+  .ranking-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+  .ranking-title{
+    font-family:'Playfair Display',serif;
+    font-size:20px;font-weight:900;color:#f0ead6;
+  }
+  .ranking-sub{font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:2px;margin-top:4px;}
+  .rank-item{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 16px;
+    border:1px solid #1e1e14;
+    background:#0d0d0a;
+    margin-bottom:8px;
+    position:relative;overflow:hidden;
+    transition:border-color 0.2s;
+  }
+  .rank-item:hover{border-color:#333;}
+  .rank-item.top3{border-color:#2a2a20;background:#0f0f0c;}
+  .rank-bg-bar{
+    position:absolute;left:0;top:0;bottom:0;
+    transition:width 1s ease;
+    pointer-events:none;
+  }
+  .rank-pos{
+    width:36px;text-align:center;flex-shrink:0;
+    font-family:'Playfair Display',serif;
+  }
+  .rank-medal{font-size:22px;}
+  .rank-num{font-size:13px;color:#444;font-family:'Space Mono',monospace;}
+  .rank-info{flex:1;min-width:0;position:relative;}
+  .rank-zone-row{display:flex;gap:8px;margin-bottom:3px;flex-wrap:wrap;}
+  .rank-zone-tag{
+    font-family:'Space Mono',monospace;
+    font-size:9px;letter-spacing:1px;
+    color:#555;
+  }
+  .rank-name{
+    font-size:14px;font-weight:700;color:#f0ead6;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    margin-bottom:2px;
+  }
+  .rank-item-name{font-size:10px;color:#444;}
+  .rank-votes{flex-shrink:0;text-align:right;position:relative;}
+  .rank-v-num{
+    font-family:'Playfair Display',serif;
+    font-size:20px;font-weight:700;
+    color:#f0ead6;
+    animation:pulse 2s ease infinite;
+  }
+  .rank-v-label{font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:1px;}
+  .rank-bar{
+    margin-top:4px;height:2px;background:#1a1a10;width:60px;overflow:hidden;
+  }
+  .rank-bar-fill{height:100%;transition:width 1s ease;}
+
+  .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;}
+  .stat-box{
+    padding:16px;border:1px solid #2a2a20;background:#0d0d0a;text-align:center;
+  }
+  .stat-num{
+    font-family:'Playfair Display',serif;
+    font-size:clamp(20px,4vw,28px);font-weight:700;color:#f0ead6;
+  }
+  .stat-label{font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:1px;margin-top:4px;}
+
+  /* ── CONFETTI OVERLAY ── */
+  #confetti-container{
+    position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;
+    display:none;
+  }
+  .confetti-piece{
+    position:absolute;top:-20px;
+    width:8px;height:8px;
+    animation:confetti-fall linear forwards;
+  }
+
+  /* ── VOTE ANIMATION OVERLAY ── */
+  #vote-overlay{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.92);
+    z-index:1000;display:none;
+    flex-direction:column;align-items:center;justify-content:center;
+    gap:20px;
+  }
+  .vote-count-display{
+    font-family:'Playfair Display',serif;
+    font-size:clamp(60px,15vw,120px);font-weight:900;
+    color:#f0ead6;line-height:1;
+    animation:countUp 0.3s ease;
+  }
+  .vote-overlay-sub{
+    font-family:'Space Mono',monospace;
+    font-size:clamp(10px,2vw,13px);letter-spacing:4px;color:#666;
+  }
+  .vote-circles{position:absolute;inset:0;pointer-events:none;}
+  .vote-circle{
+    position:absolute;
+    border-radius:50%;
+    border:1px solid rgba(240,234,214,0.15);
+    animation:ripple 1.5s ease-out forwards;
+  }
+
+  /* responsive */
+  @media(max-width:600px){
+    .map-wrap{flex-direction:column;}
+    .chefs-grid{grid-template-columns:1fr;}
+    .cdp-body{grid-template-columns:1fr 1fr;}
+    .booth-grid{grid-template-columns:1fr;}
+    .vote-layout{grid-template-columns:1fr;}
+    .stats-row{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- CONFETTI -->
+<div id="confetti-container"></div>
+
+<!-- VOTE OVERLAY -->
+<div id="vote-overlay">
+  <div class="vote-circles" id="vote-circles"></div>
+  <div style="font-size:13px;font-family:'Space Mono',monospace;letter-spacing:4px;color:#666;margin-bottom:10px;">VOTES COUNTED</div>
+  <div class="vote-count-display" id="overlay-count">0</div>
+  <div class="vote-overlay-sub" id="overlay-booth"></div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-inner">
+    <div class="header-top">
+      <div class="logo-mark">🍗</div>
+      <div class="title-block">
+        <div class="title-main">黑白大廚：料理階級大戰</div>
+        <div class="title-sub">KAOHSIUNG CHICKEN GRAND PRIX 2025</div>
+      </div>
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        LIVE
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(0)">場地地圖</button>
+      <button class="tab-btn" onclick="switchTab(1)">評審主廚</button>
+      <button class="tab-btn" onclick="switchTab(2)">民眾投票</button>
+      <button class="tab-btn" onclick="switchTab(3)">即時排行</button>
+    </div>
+  </div>
+</div>
+
+<div class="content" id="content"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────────────────
+const CHEFS = [
+  {
+    id:'chef1', emoji:'👨‍🍳', name:'江俊豪', nameEn:'CHIANG CHUN-HAO',
+    rank:'MICHELIN ★★★', title:'主審評委 / HEAD JUDGE',
+    restaurant:'江·秘境', location:'台北',
+    tags:['法式技法','台灣食材','分子料理'],
+    bio:'旅法18年，將法式精髓與台灣山海物產完美融合。其招牌「九層塔泡沫佐炸雞腿」重新定義台式炸物的可能性。被《米其林指南》譽為「最懂得讓台灣食材說話的廚師」。',
+    quote:'「好的炸雞需要三個要素：對的油溫、對的醃製時間、還有一顆尊重食材的心。」',
+    criteria:{外皮酥脆度:92,醃製入味:88,油溫掌控:95,創意程度:78,擺盤呈現:91},
+    judged:42,
+  },
+  {
+    id:'chef2', emoji:'👩‍🍳', name:'林雅婷', nameEn:'LIN YA-TING',
+    rank:'MICHELIN ★★', title:'評審 / JUDGE',
+    restaurant:'松·懷石', location:'京都・台南',
+    tags:['日式懷石','炭火技法','季節食材'],
+    bio:'師承京都百年懷石名店，將日本職人精神帶回台灣。對炸物有獨到見解——她認為好的炸物是「用最熱的溫度，保存最完整的食材本味」。現同時主持台南松·懷石。',
+    quote:'「炸，是所有烹調技法中最誠實的。油溫不說謊，食材的新鮮度無所遁形。」',
+    criteria:{外皮酥脆度:95,醃製入味:85,油溫掌控:90,創意程度:82,擺盤呈現:94},
+    judged:38,
+  },
+  {
+    id:'chef3', emoji:'🧑‍🍳', name:'陳大偉', nameEn:'CHEN DA-WEI',
+    rank:'MICHELIN ★', title:'評審 / JUDGE',
+    restaurant:'廚·街市', location:'高雄',
+    tags:['高雄在地','市井料理','創新台菜'],
+    bio:'高雄在地出身，走遍全台夜市與廟口攤位，深諳台灣街頭飲食文化。特別關注鹹酥雞的「社區性」——一攤好的鹹酥雞攤，是社區的情感聚點。本屆最貼近民心的評審。',
+    quote:'「不需要金箔，不需要松露。一份讓你站著就能吃完，卻又捨不得太快吃的鹹酥雞，就是完美。」',
+    criteria:{外皮酥脆度:88,醃製入味:95,油溫掌控:85,創意程度:90,擺盤呈現:72},
+    judged:55,
+  },
+  {
+    id:'chef4', emoji:'👨‍🍳', name:'Marcus Webb', nameEn:'MARCUS WEBB',
+    rank:'JAMES BEARD', title:'國際評審 / INTL. JUDGE',
+    restaurant:'The Croft', location:'London・紐約',
+    tags:['英式現代料理','亞洲融合','風味研究'],
+    bio:'英國最具影響力的亞洲食物研究者，著有《The Fried Revolution》。初嚐台式鹹酥雞即被迷倒，形容其為「世界上最接近完美的街頭食物」。此行專程來高雄為本屆大賽擔任國際評審。',
+    quote:'"Taiwanese fried chicken is not just food — it\'s a civilisation in a paper bag."',
+    criteria:{外皮酥脆度:90,醃製入味:88,油溫掌控:87,創意程度:96,擺盤呈現:85},
+    judged:29,
+  },
+  {
+    id:'chef5', emoji:'👩‍🍳', name:'黃佩珊', nameEn:'HUANG PEI-SHAN',
+    rank:'BAFTA FOOD', title:'評審 / JUDGE',
+    restaurant:'珊·根', location:'高雄旗津',
+    tags:['海港料理','漁港文化','在地食材'],
+    bio:'旗津土生土長，熟知高雄海港的每一種味道。其餐廳「珊·根」以使用當日旗津現撈食材著稱，年年入選《台灣必吃餐廳》。特別期待本屆結合在地海味的創意炸物。',
+    quote:'「高雄的鹹酥雞跟台北的不一樣——它帶著海風，帶著碼頭的鹹。那是我們的DNA。」',
+    criteria:{外皮酥脆度:86,醃製入味:92,油溫掌控:88,創意程度:85,擺盤呈現:88},
+    judged:47,
+  },
+];
+
+const ZONES = [
+  { id:"A", name:"全國名店區", short:"名店", emoji:"🏆", color:"#c0392b",
+    a1:2, a2:70, mid:36,
+    desc:"全台指標品牌齊聚，製造話題與排隊效應", count:14,
+    booths:[
+      {n:"A01",name:"基隆廟口鹹酥雞",item:"脆皮黃金雞",v:487},
+      {n:"A02",name:"師大夜市元祖",item:"九層塔大雞排",v:423},
+      {n:"A03",name:"士林老牌炸物",item:"椒鹽雞腿",v:398},
+      {n:"A04",name:"西門人氣炸物王",item:"辣椒鹹酥雞",v:376},
+      {n:"A05",name:"台中一中街名店",item:"麻辣雞丁串",v:355},
+      {n:"A06",name:"台南廟前傳奇",item:"鹽酥雞皮卷",v:340},
+      {n:"A07",name:"嘉義文化路名攤",item:"火雞腿排",v:318},
+      {n:"A08",name:"花蓮市場炸雞",item:"原住民香料炸雞",v:302},
+      {n:"A09",name:"宜蘭夜市霸主",item:"三星蔥炸雞",v:289},
+      {n:"A10",name:"台東知本老店",item:"野薑花雞塊",v:267},
+      {n:"A11",name:"屏東恆春傳奇",item:"墾丁蒜香炸雞",v:245},
+      {n:"A12",name:"雲林斗六老字號",item:"梅汁脆皮雞",v:234},
+      {n:"A13",name:"彰化鹿港風味",item:"古早味炸肉串",v:221},
+      {n:"A14",name:"南投埔里名攤",item:"竹炭炸雞",v:198},
+    ]},
+  { id:"B", name:"高雄在地私藏", short:"私藏", emoji:"🌟", color:"#d4a017",
+    a1:74, a2:142, mid:108,
+    desc:"高雄在地特色店家，結合城市文化故事", count:14,
+    booths:[
+      {n:"B01",name:"鹽埕老街鹹酥雞",item:"港都脆皮雞",v:445},
+      {n:"B02",name:"旗津海產路炸物",item:"海風椒鹽雞",v:412},
+      {n:"B03",name:"六合夜市名攤",item:"夜市炸雞腿",v:389},
+      {n:"B04",name:"三鳳中街私藏",item:"川味麻辣雞",v:367},
+      {n:"B05",name:"左營眷村炸雞",item:"眷村風味雞排",v:348},
+      {n:"B06",name:"鳳山廟口老店",item:"鳳梨酥炸雞",v:334},
+      {n:"B07",name:"岡山大蒜炸雞",item:"岡山蒜香雞",v:319},
+      {n:"B08",name:"美濃客家炸物",item:"客家桔醬炸雞",v:305},
+      {n:"B09",name:"旗山香蕉炸雞",item:"旗山蕉香雞塊",v:291},
+      {n:"B10",name:"燕巢芭樂炸雞",item:"熱帶風味炸雞",v:278},
+      {n:"B11",name:"大樹荔枝炸雞",item:"荔枝蜜炸雞腿",v:261},
+      {n:"B12",name:"茄萣海風炸物",item:"海鹽脆皮雞",v:247},
+      {n:"B13",name:"甲仙芋頭炸物",item:"芋香炸雞球",v:233},
+      {n:"B14",name:"桃源山地炸雞",item:"山胡椒炸雞",v:219},
+    ]},
+  { id:"C", name:"潮流創意口味", short:"創意", emoji:"✨", color:"#888",
+    a1:146, a2:214, mid:180,
+    desc:"導入創新元素，吸引年輕族群與社群關注", count:14,
+    booths:[
+      {n:"C01",name:"黑化鹹酥雞",item:"竹炭脆皮雞",v:534},
+      {n:"C02",name:"金箔炸雞台",item:"金箔炸雞腿",v:512},
+      {n:"C03",name:"彩虹炸物攤",item:"七色炸雞串",v:489},
+      {n:"C04",name:"韓式辣炸雞",item:"韓式甜辣雞",v:467},
+      {n:"C05",name:"和風天婦羅雞",item:"抹茶鹽炸雞",v:445},
+      {n:"C06",name:"泰式打拋炸雞",item:"泰式打拋雞",v:423},
+      {n:"C07",name:"印度咖哩炸雞",item:"瑪薩拉炸雞",v:401},
+      {n:"C08",name:"波霸奶茶炸雞",item:"珍奶鹹酥雞",v:389},
+      {n:"C09",name:"玫瑰鹽炸雞",item:"喜馬拉雅鹽雞",v:378},
+      {n:"C10",name:"松露炸雞",item:"松露橄欖炸雞",v:356},
+      {n:"C11",name:"麻辣鍋底炸雞",item:"火鍋風味雞塊",v:334},
+      {n:"C12",name:"啤酒炸雞",item:"精釀啤酒炸雞",v:312},
+      {n:"C13",name:"梅子炸雞",item:"脆梅風味炸雞",v:289},
+      {n:"C14",name:"辣椒巧克力雞",item:"黑巧克力辣炸雞",v:267},
+    ]},
+  { id:"D", name:"清涼飲品微醺", short:"飲品", emoji:"🍺", color:"#2e7d5a",
+    a1:218, a2:286, mid:252,
+    desc:"提供搭配選擇，延長停留時間與夜間氛圍", count:14,
+    booths:[
+      {n:"D01",name:"精釀啤酒配炸雞",item:"台灣精釀IPA",v:423},
+      {n:"D02",name:"手搖鮮奶茶",item:"珍珠奶茶",v:398},
+      {n:"D03",name:"氣泡果汁攤",item:"現榨木瓜牛奶",v:376},
+      {n:"D04",name:"台灣啤酒特攤",item:"台啤金牌冰桶",v:354},
+      {n:"D05",name:"水果酸甜汁",item:"百香果冰沙",v:332},
+      {n:"D06",name:"日式柚子沙瓦",item:"柚子氣泡飲",v:310},
+      {n:"D07",name:"韓式馬格利",item:"米酒氣泡飲",v:289},
+      {n:"D08",name:"台灣蔗糖冷飲",item:"黑糖蔗汁",v:267},
+      {n:"D09",name:"椰子水特區",item:"現開椰子水",v:245},
+      {n:"D10",name:"文青酸啤酒",item:"比利時白啤",v:234},
+      {n:"D11",name:"野草莓汽水",item:"自製果汁氣泡水",v:222},
+      {n:"D12",name:"古早味麥仔茶",item:"台式麥茶",v:211},
+      {n:"D13",name:"薑汁汽水",item:"老薑汽水",v:198},
+      {n:"D14",name:"仙草冰涼飲",item:"仙草蜜拿鐵",v:187},
+    ]},
+  { id:"E", name:"親子互動體驗", short:"親子", emoji:"🎪", color:"#5a5a5a",
+    a1:290, a2:358, mid:324,
+    desc:"規劃親子互動活動，拓展家庭客群參與", count:14,
+    booths:[
+      {n:"E01",name:"小廚師體驗攤",item:"親子炸物體驗",v:512},
+      {n:"E02",name:"DIY調味料站",item:"自製醬料包",v:489},
+      {n:"E03",name:"雞腿扭蛋機",item:"扭蛋換炸物",v:467},
+      {n:"E04",name:"鹹酥雞拼圖攤",item:"互動拼圖挑戰",v:445},
+      {n:"E05",name:"炸物模型彩繪",item:"DIY模型彩繪",v:423},
+      {n:"E06",name:"AR拍照合成站",item:"AR打卡拍照",v:401},
+      {n:"E07",name:"套圈圈換炸雞",item:"套圈兌換小吃",v:389},
+      {n:"E08",name:"小朋友專區炸物",item:"兒童小份炸物",v:367},
+      {n:"E09",name:"炸物風味猜猜樂",item:"猜味遊戲",v:345},
+      {n:"E10",name:"鹹酥雞小書攤",item:"食育繪本閱讀",v:323},
+      {n:"E11",name:"手作炸物貼紙",item:"DIY貼紙",v:301},
+      {n:"E12",name:"親子競炸挑戰",item:"快炸比賽",v:289},
+      {n:"E13",name:"食農教育攤",item:"食農認識課",v:267},
+      {n:"E14",name:"玉米炸物甜點",item:"玉米炸甜球",v:245},
+    ]},
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────
+let currentTab = 0;
+let selectedZone = null;
+let selectedChef = null;
+let voteSelected = '';
+let voteStars = 0;
+let hoverStar = 0;
+let voted = false;
+let rankings = initRankings();
+let totalVotes = rankings.reduce((s,b)=>s+b.v,0);
+
+function initRankings() {
+  return ZONES.flatMap(z => z.booths.map(b=>({
+    ...b, zoneName:z.name, zoneColor:z.color, zoneEmoji:z.emoji
+  }))).sort((a,b)=>b.v-a.v).slice(0,10);
+}
+
+// Live tick
+setInterval(()=>{
+  rankings = rankings.map(b=>({...b, v: b.v + Math.floor(Math.random()*3)}))
+    .sort((a,b)=>b.v-a.v);
+  totalVotes += Math.floor(Math.random()*15)+5;
+  if(currentTab===3) renderTab3();
+}, 2000);
+
+// ─────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────
+function polar(r, deg) {
+  const rad = (deg-90)*Math.PI/180;
+  return [150+r*Math.cos(rad), 150+r*Math.sin(rad)];
+}
+function wedge(r1,r2,a1,a2) {
+  const f=n=>n.toFixed(1);
+  const [x1,y1]=polar(r1,a1),[x2,y2]=polar(r2,a1);
+  const [x3,y3]=polar(r2,a2),[x4,y4]=polar(r1,a2);
+  const la=a2-a1>180?1:0;
+  return `M${f(x1)},${f(y1)} L${f(x2)},${f(y2)} A${r2},${r2} 0 ${la},1 ${f(x3)},${f(y3)} L${f(x4)},${f(y4)} A${r1},${r1} 0 ${la},0 ${f(x1)},${f(y1)}Z`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CONFETTI
+// ─────────────────────────────────────────────────────────────────────────
+function launchConfetti() {
+  const c = document.getElementById('confetti-container');
+  c.style.display='block';
+  c.innerHTML='';
+  const colors=['#f0ead6','#c0392b','#d4a017','#888','#2e7d5a','#5a5a5a','#fff'];
+  for(let i=0;i<80;i++){
+    const el=document.createElement('div');
+    el.className='confetti-piece';
+    const sz = 4+Math.random()*8;
+    el.style.cssText=`
+      left:${Math.random()*100}%;
+      width:${sz}px;height:${sz}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};
+      border-radius:${Math.random()>0.5?'50%':'0'};
+      animation-duration:${1.5+Math.random()*2}s;
+      animation-delay:${Math.random()*0.8}s;
+      transform:rotate(${Math.random()*360}deg);
+    `;
+    c.appendChild(el);
+  }
+  setTimeout(()=>{ c.style.display='none'; c.innerHTML=''; }, 3500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// VOTE OVERLAY (百人投票特效)
+// ─────────────────────────────────────────────────────────────────────────
+function showVoteOverlay(boothName, finalVotes) {
+  const overlay = document.getElementById('vote-overlay');
+  const countEl = document.getElementById('overlay-count');
+  const boothEl = document.getElementById('overlay-booth');
+  const circles = document.getElementById('vote-circles');
+
+  overlay.style.display='flex';
+  boothEl.textContent = boothName.toUpperCase();
+  circles.innerHTML='';
+
+  // Animate circles
+  for(let i=0;i<8;i++){
+    const c=document.createElement('div');
+    c.className='vote-circle';
+    const sz=60+i*80;
+    c.style.cssText=`
+      width:${sz}px;height:${sz}px;
+      left:50%;top:50%;
+      margin-left:-${sz/2}px;margin-top:-${sz/2}px;
+      animation-duration:${1.2+i*0.3}s;
+      animation-delay:${i*0.1}s;
+    `;
+    circles.appendChild(c);
+  }
+
+  // Count up animation
+  let current=0;
+  const target=finalVotes;
+  const step=Math.ceil(target/40);
+  const timer=setInterval(()=>{
+    current=Math.min(current+step,target);
+    countEl.textContent=current.toLocaleString();
+    if(current>=target){
+      clearInterval(timer);
+      launchConfetti();
+      setTimeout(()=>{ overlay.style.display='none'; }, 1800);
+    }
+  },40);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAB SWITCH
+// ─────────────────────────────────────────────────────────────────────────
+function switchTab(i) {
+  currentTab=i;
+  document.querySelectorAll('.tab-btn').forEach((b,idx)=>b.classList.toggle('active',idx===i));
+  const c=document.getElementById('content');
+  c.style.opacity='0';
+  setTimeout(()=>{
+    c.style.transition='opacity 0.25s ease';
+    c.style.opacity='1';
+    if(i===0) renderTab0();
+    else if(i===1) renderTab1();
+    else if(i===2) renderTab2();
+    else renderTab3();
+  },80);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAB 0: MAP
+// ─────────────────────────────────────────────────────────────────────────
+function renderTab0() {
+  const svgSize = Math.min(280, window.innerWidth-80);
+  const z = selectedZone;
+
+  let boothPanel = '';
+  if(!z) {
+    boothPanel = `
+      <div class="empty-state">
+        <div class="empty-icon">↑</div>
+        <div class="empty-text">點擊左側地圖中的扇形區域<br>查看各展區攤位資訊</div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#333;margin-top:6px;letter-spacing:2px;">5 ZONES · 70 BOOTHS</div>
+      </div>`;
+  } else {
+    const maxV = Math.max(...z.booths.map(b=>b.v));
+    boothPanel = `
+      <div style="animation:slideR 0.25s ease">
+        <div class="zone-header">
+          <div class="zone-title-row">
+            <div class="zone-emoji-box">${z.emoji}</div>
+            <div style="flex:1">
+              <div class="zone-name" style="color:${z.color}">${z.name}</div>
+              <div class="zone-desc">${z.desc}</div>
+            </div>
+            <button class="close-btn" onclick="selectedZone=null;renderTab0()">✕</button>
+          </div>
+          <div class="zone-tags">
+            <span class="zone-tag">${z.count} 個攤位</span>
+            <span class="zone-tag" style="color:${z.color};border-color:${z.color}40">展區 ${z.id}</span>
+          </div>
+        </div>
+        <div class="booth-grid-wrap">
+          <div class="booth-grid">
+            ${z.booths.map(b=>`
+              <div class="booth-card">
+                <div class="booth-num">${b.n}</div>
+                <div class="booth-name">${b.name}</div>
+                <div class="booth-item">${b.item}</div>
+                <div class="booth-votes">
+                  <span class="booth-v">${b.v.toLocaleString()}</span>
+                  <div class="booth-bar"><div class="booth-bar-fill" style="width:${Math.round(b.v/maxV*100)}%;background:${z.color}"></div></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // SVG Map
+  const zonesSVG = ZONES.map(zn=>{
+    const sel = selectedZone?.id===zn.id;
+    const outerR = sel?150:140;
+    const [lx,ly] = polar(93,zn.mid);
+    const [ox,oy] = polar(156,zn.mid);
+    return `
+      <g style="cursor:pointer" onclick="selectZone('${zn.id}')">
+        <path d="${wedge(46,outerR,zn.a1,zn.a2)}"
+          fill="${sel?zn.color:zn.color+'44'}"
+          stroke="${sel?zn.color:zn.color+'22'}"
+          stroke-width="${sel?1.5:0.5}"
+          style="transition:all 0.2s"
+        />
+        <text x="${lx}" y="${ly-8}" text-anchor="middle" dominant-baseline="middle"
+          font-size="14" fill="${sel?'#f0ead6':'rgba(240,234,214,0.5)'}"
+          style="pointer-events:none;user-select:none">${zn.emoji}</text>
+        <text x="${lx}" y="${ly+9}" text-anchor="middle" dominant-baseline="middle"
+          font-size="7" fill="${sel?'#f0ead6':'rgba(240,234,214,0.35)'}"
+          font-family="'Space Mono',monospace" style="pointer-events:none;user-select:none">${zn.short}</text>
+        <text x="${ox}" y="${oy}" text-anchor="middle" dominant-baseline="middle"
+          font-size="7" fill="${sel?'#f0ead6':zn.color+'66'}"
+          font-family="'Space Mono',monospace" style="pointer-events:none;user-select:none">${zn.count}</text>
+      </g>`;
+  }).join('');
+
+  const html = `
+    <div class="map-wrap">
+      <div class="map-panel">
+        <div class="map-hint">— TAP A ZONE TO EXPLORE —</div>
+        <svg viewBox="0 0 300 300" width="${svgSize}" height="${svgSize}" style="display:block;margin:0 auto;overflow:visible">
+          ${[143,103,63].map(r=>`<circle cx="150" cy="150" r="${r}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5" stroke-dasharray="4 4"/>`).join('')}
+          ${zonesSVG}
+          <circle cx="150" cy="150" r="44" fill="rgba(240,234,214,0.04)" stroke="rgba(240,234,214,0.15)" stroke-width="1"/>
+          <text x="150" y="144" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#f0ead6">🍗</text>
+          <text x="150" y="163" text-anchor="middle" font-size="7" fill="rgba(240,234,214,0.4)" font-family="'Space Mono',monospace">MAIN STAGE</text>
+        </svg>
+        <div class="legend-row">
+          ${ZONES.map(zn=>`
+            <div class="legend-pill ${selectedZone?.id===zn.id?'active':''}" onclick="selectZone('${zn.id}')">
+              <div class="legend-dot" style="background:${zn.color}"></div>
+              ${zn.name}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="zone-info">${boothPanel}</div>
+    </div>
+    <div class="feature-cards">
+      ${[
+        {icon:'🎯',title:'INTERACTIVE MAP',desc:'五大展區同心圓設計，點擊即展開攤位資訊，動線直覺清晰'},
+        {icon:'📍',title:'BOOTH INFO',desc:'每攤顯示編號、特色品項與即時得票數，方便預先規劃參觀'},
+        {icon:'📱',title:'MOBILE READY',desc:'手機掃碼即用，搭配現場 QR Code 觸點引導數位參與'},
+      ].map(c=>`
+        <div class="feature-card">
+          <div class="fc-icon">${c.icon}</div>
+          <div class="fc-title">${c.title}</div>
+          <div class="fc-desc">${c.desc}</div>
+        </div>
+      `).join('')}
+    </div>`;
+
+  document.getElementById('content').innerHTML=html;
+}
+
+function selectZone(id) {
+  selectedZone = selectedZone?.id===id ? null : ZONES.find(z=>z.id===id);
+  renderTab0();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAB 1: CHEFS
+// ─────────────────────────────────────────────────────────────────────────
+function renderTab1() {
+  const chefCards = CHEFS.map((c,i)=>`
+    <div class="chef-card ${selectedChef?.id===c.id?'selected':''}"
+      onclick="selectChef('${c.id}')"
+      style="animation-delay:${i*0.07}s">
+      <div class="chef-portrait" style="background:linear-gradient(135deg,#0f0f0c,#1a1a14)">
+        <div class="chef-portrait-bg">${c.emoji}</div>
+        <div class="chef-rank">${c.rank}</div>
+        <div class="chef-name-block">
+          <div class="chef-stars">${c.rank.includes('★★★')?'★★★':c.rank.includes('★★')?'★★':c.rank.includes('★')?'★':'◆'}</div>
+          <div class="chef-name">${c.name}</div>
+          <div class="chef-title">${c.title}</div>
+        </div>
+      </div>
+      <div class="chef-body">
+        <div class="chef-tag-row">
+          ${c.tags.map(t=>`<span class="chef-tag">${t}</span>`).join('')}
+        </div>
+        <div class="chef-bio">${c.bio.substring(0,80)}...</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:1px">已評審 ${c.judged} 攤</div>
+          <div style="font-family:'Space Mono',monospace;font-size:9px;color:#555;letter-spacing:1px">${selectedChef?.id===c.id?'— 收起 —':'+ 查看 →'}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  let detailPanel = '';
+  if(selectedChef) {
+    const c = selectedChef;
+    const criteriaKeys = Object.keys(c.criteria);
+    const criteriaHTML = criteriaKeys.map(k=>`
+      <div class="cdp-crit-item">
+        <div class="cdp-crit-name">${k}</div>
+        <div class="cdp-crit-bar"><div class="cdp-crit-fill" style="width:${c.criteria[k]}%"></div></div>
+        <div class="cdp-crit-score">${c.criteria[k]}</div>
+      </div>
+    `).join('');
+
+    detailPanel = `
+      <div class="chef-detail-panel">
+        <div class="cdp-header">
+          <div class="cdp-avatar">${c.emoji}</div>
+          <div style="flex:1">
+            <div class="cdp-name">${c.name}</div>
+            <div class="cdp-sub">${c.nameEn} · ${c.restaurant} · ${c.location}</div>
+          </div>
+          <button onclick="selectedChef=null;renderTab1()" style="background:none;border:1px solid #2a2a20;color:#555;cursor:pointer;padding:6px 12px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px">CLOSE</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:12px;color:#888;line-height:1.9;margin-bottom:14px">${c.bio}</div>
+            <div class="cdp-quote">${c.quote}</div>
+          </div>
+          <div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+              <div class="cdp-stat">
+                <div class="cdp-stat-label">RESTAURANT</div>
+                <div class="cdp-stat-val" style="font-size:13px">${c.restaurant}</div>
+              </div>
+              <div class="cdp-stat">
+                <div class="cdp-stat-label">JUDGED</div>
+                <div class="cdp-stat-val">${c.judged}<span style="font-size:11px;color:#555"> 攤</span></div>
+              </div>
+            </div>
+            <div class="cdp-crit-title">— SCORING CRITERIA —</div>
+            ${criteriaHTML}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:#f0ead6">評審主廚介紹</div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:3px;margin-top:4px">THE JUDGES · MICHELIN PANEL</div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:9px;color:#444;letter-spacing:2px">${CHEFS.length} JUDGES · CLICK TO EXPAND</div>
+    </div>
+    <div class="chefs-grid">${chefCards}</div>
+    ${detailPanel}`;
+}
+
+function selectChef(id) {
+  const c = CHEFS.find(x=>x.id===id);
+  selectedChef = selectedChef?.id===id ? null : c;
+  renderTab1();
+  if(selectedChef) {
+    setTimeout(()=>{
+      const dp = document.querySelector('.chef-detail-panel');
+      if(dp) dp.scrollIntoView({behavior:'smooth',block:'start'});
+    },100);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAB 2: VOTE
+// ─────────────────────────────────────────────────────────────────────────
+function renderTab2() {
+  const selectOptions = ZONES.map(z=>`
+    <optgroup label="${z.emoji} ${z.name}">
+      ${z.booths.map(b=>`<option value="${b.n}">${b.n} · ${b.name}</option>`).join('')}
+    </optgroup>
+  `).join('');
+
+  const starsHTML = [1,2,3,4,5].map(s=>`
+    <button class="star-btn ${voteStars>=s||hoverStar>=s?'active':''}"
+      onclick="setStars(${s})"
+      onmouseenter="hoverStar=${s};renderTab2()"
+      onmouseleave="hoverStar=0;renderTab2()">⭐</button>
+  `).join('');
+
+  const starLabel = voteStars>0?['','普通','還不錯','很推薦','非常好','超推薦！'][voteStars]:'';
+
+  const formContent = voted ? `
+    <div class="success-state">
+      <div class="success-icon">🏆</div>
+      <div class="success-title">投票成功！</div>
+      <div class="success-sub">您的評分已即時更新至排行榜</div>
+    </div>
+  ` : `
+    <div>
+      <div class="step-label">STEP 01 · 選擇攤位</div>
+      <select class="vote-select" onchange="voteSelected=this.value;renderTab2()">
+        <option value="">— 請選擇攤位編號 —</option>
+        ${selectOptions}
+      </select>
+      <div class="step-label">STEP 02 · 給予評分</div>
+      <div class="star-row">
+        ${starsHTML}
+        <span class="star-label">${starLabel}</span>
+      </div>
+      <div class="qr-hint">
+        <div class="qr-icon">📱</div>
+        <div>
+          <div class="qr-text-t">現場掃碼驗證投票</div>
+          <div class="qr-text-s">掃描現場 QR Code → 手機號碼驗證 → 投票完成</div>
+        </div>
+      </div>
+      <button class="vote-submit" ${!voteSelected||!voteStars?'disabled':''} onclick="submitVote()">
+        送出評分 →
+      </button>
+    </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="vote-layout">
+      <div class="vote-card">
+        <div class="vote-title">民眾評審投票</div>
+        <div class="vote-hint">您就是評審！每位民眾每日可投票一次<br>選出心目中的鹹酥雞之王</div>
+        ${formContent}
+      </div>
+      <div>
+        <div class="how-card">
+          <div class="how-title">— 數位評審機制 —</div>
+          ${[
+            {n:'01',t:'現場掃碼',d:'攤位旁設置 QR Code 觸點，掃碼即開啟投票頁面'},
+            {n:'02',t:'手機驗證',d:'輸入手機號碼取得 OTP，確保每人每日一票公正性'},
+            {n:'03',t:'評分投票',d:'5星評分制，可備註評語，增加互動深度'},
+            {n:'04',t:'即時更新',d:'票數即時計算，排行榜每 30 秒同步更新'},
+          ].map(s=>`
+            <div class="how-step">
+              <div class="how-num">${s.n}</div>
+              <div>
+                <div class="how-step-t">${s.t}</div>
+                <div class="how-step-d">${s.d}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="award-card">
+          <div class="award-icon">🏆</div>
+          <div class="award-title">GRAND CHAMPION · 鹹酥雞王</div>
+          <div class="award-desc">票選第一名獲頒官方認證「全國鹹酥雞王」牌匾<br>並獲得下屆優先參展資格與媒體曝光</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function setStars(s) {
+  voteStars = s;
+  renderTab2();
+}
+
+function submitVote() {
+  if(!voteSelected||!voteStars) return;
+  const booth = ZONES.flatMap(z=>z.booths).find(b=>b.n===voteSelected);
+  const addedVotes = voteStars*15;
+  const idx = rankings.findIndex(b=>b.n===voteSelected);
+  if(idx>=0) rankings[idx].v += addedVotes;
+  rankings.sort((a,b)=>b.v-a.v);
+  totalVotes += addedVotes;
+
+  voted = true;
+  const finalV = idx>=0 ? rankings[idx>=0?idx:0].v : addedVotes;
+
+  renderTab2();
+  showVoteOverlay(booth?.name||voteSelected, finalV);
+
+  setTimeout(()=>{
+    voted=false; voteSelected=''; voteStars=0;
+    renderTab2();
+  }, 4000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TAB 3: RANKINGS
+// ─────────────────────────────────────────────────────────────────────────
+function renderTab3() {
+  const maxV = rankings[0].v;
+  const medals = ['🥇','🥈','🥉'];
+  const rows = rankings.map((b,i)=>`
+    <div class="rank-item ${i<3?'top3':''}">
+      <div class="rank-bg-bar" style="width:${Math.round(b.v/maxV*100)}%;background:linear-gradient(90deg,${b.zoneColor}18,transparent)"></div>
+      <div class="rank-pos">${i<3?`<span class="rank-medal">${medals[i]}</span>`:`<span class="rank-num">#${i+1}</span>`}</div>
+      <div class="rank-info">
+        <div class="rank-zone-row">
+          <span class="rank-zone-tag">${b.n}</span>
+          <span class="rank-zone-tag">${b.zoneEmoji} ${b.zoneName}</span>
+        </div>
+        <div class="rank-name">${b.name}</div>
+        <div class="rank-item-name">${b.item}</div>
+      </div>
+      <div class="rank-votes">
+        <div class="rank-v-num">${b.v.toLocaleString()}</div>
+        <div class="rank-v-label">票</div>
+        <div class="rank-bar"><div class="rank-bar-fill" style="width:${Math.round(b.v/maxV*100)}%;background:${b.zoneColor}"></div></div>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div class="ranking-header">
+      <div>
+        <div class="ranking-title">即時票選排行榜</div>
+        <div class="ranking-sub">LIVE RESULTS · AUTO-UPDATE EVERY 2S</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="live-dot"></div>
+        <span style="font-family:'Space Mono',monospace;font-size:9px;color:#c0392b;letter-spacing:2px">LIVE</span>
+      </div>
+    </div>
+    <div>${rows}</div>
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-num">${totalVotes.toLocaleString()}</div>
+        <div class="stat-label">TOTAL VOTES</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">70</div>
+        <div class="stat-label">BOOTHS</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">23,847</div>
+        <div class="stat-label">TODAY</div>
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────
+renderTab0();
+</script>
+</body>
+</html>

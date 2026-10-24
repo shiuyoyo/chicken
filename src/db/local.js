@@ -2,35 +2,44 @@
 const KEY = 'food-erp:data:v1'
 
 export function localBackend() {
-  let timer = null
+  let pending = false
   let snapshot = null
   const flush = () => {
-    timer = null
+    if (!pending) return
+    pending = false
     try {
-      localStorage.setItem(KEY, JSON.stringify(snapshot))
+      globalThis.localStorage?.setItem(KEY, JSON.stringify(snapshot))
     } catch (e) {
       console.error('本機儲存失敗', e)
+      globalThis.dispatchEvent?.(new CustomEvent('erp:backend-error', { detail: '本機儲存空間不足或被瀏覽器封鎖，請備份資料並改用 Supabase' }))
     }
   }
+  // 頁面關閉 / 切到背景前一定寫入
+  globalThis.addEventListener?.('pagehide', flush)
+  globalThis.addEventListener?.('visibilitychange', flush)
   return {
     name: '本機儲存（瀏覽器）',
     async loadAll(tables) {
       let data = {}
       try {
-        data = JSON.parse(localStorage.getItem(KEY) || '{}') || {}
+        data = JSON.parse(globalThis.localStorage?.getItem(KEY) || '{}') || {}
       } catch {
         data = {}
       }
       for (const t of tables) data[t] ||= []
       return data
     },
-    // 本機版直接整份寫回（延遲合併多次寫入）
+    // 同一輪操作的多次寫入合併成一次，在這輪結束時立刻寫入
     save(_table, _op, _row, all) {
       snapshot = all
-      if (!timer) timer = setTimeout(flush, 150)
+      if (!pending) {
+        pending = true
+        queueMicrotask(flush)
+      }
     },
     async replaceAll(all) {
       snapshot = all
+      pending = true
       flush()
     },
   }

@@ -20,10 +20,18 @@ export function login(userId, pin) {
     fail('PIN 碼錯誤')
   }
   delete tries[userId]
+  goHome()
   setPref('userId', u.id)
   return u
 }
-export const logout = () => setPref('userId', '')
+// 換人時回到首頁，不要停在上一個人的頁面
+const goHome = () => {
+  if (typeof location !== 'undefined' && location.hash !== '#/') location.hash = '#/'
+}
+export const logout = () => {
+  goHome()
+  setPref('userId', '')
+}
 
 // ---------- 使用者 / 角色 ----------
 const adminCount = (users = all('users'), roles = all('roles')) =>

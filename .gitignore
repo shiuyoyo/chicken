@@ -3,3 +3,4 @@ dist
 dist-single
 .env
 .env.local
+tests/e2e/out

@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:single": "vite build --mode single",
     "preview": "vite preview --host",
-    "schema": "node scripts/gen-schema.mjs"
+    "schema": "node scripts/gen-schema.mjs",
+    "test": "vitest run",
+    "e2e": "node tests/e2e/acceptance.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

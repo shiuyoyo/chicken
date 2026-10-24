@@ -42,6 +42,26 @@
     color-scheme: dark;
   }
 }
+:root[data-theme='dark'] {
+  --bg: #0e1412;
+  --surface: #161e1b;
+  --surface-2: #1d2724;
+  --text: #e6eeeb;
+  --muted: #93a39e;
+  --border: #2a3632;
+  --primary: #2dd4bf;
+  --primary-ink: #04201c;
+  --primary-soft: #113b36;
+  --ok: #4ade80;
+  --ok-soft: #12321f;
+  --warn: #fbbf24;
+  --warn-soft: #3a2c0c;
+  --bad: #f87171;
+  --bad-soft: #3d1717;
+  --info: #93c5fd;
+  --info-soft: #172a4a;
+  color-scheme: dark;
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }

@@ -24,6 +24,9 @@ export const fail = (msg) => {
 // ---------- 系統設定 ----------
 export const SETTING_DEFAULTS = {
   company_name: '示範雞肉食品廠',
+  company_tax_id: '12345678',
+  company_address: '台中市大雅區示範工業路 1 號',
+  company_phone: '04-2560-0000',
   tax_rate: 0.05,
   po_approval_amount: 50000, // 採購單超過此金額需核准
   adjust_approval_amount: 3000, // 庫存調整 / 盤差金額超過需核准
@@ -46,6 +49,9 @@ export const SETTING_DEFAULTS = {
 }
 export const SETTING_LABELS = {
   company_name: '公司名稱',
+  company_tax_id: '公司統編',
+  company_address: '公司地址',
+  company_phone: '公司電話',
   tax_rate: '營業稅率',
   po_approval_amount: '採購單核准門檻（元）',
   adjust_approval_amount: '庫存調整核准門檻（元）',

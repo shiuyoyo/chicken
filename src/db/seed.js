@@ -192,6 +192,12 @@ export async function seedDemo() {
   // 大額採購
   as('吳採購', () => L.savePurchaseOrder({ supplier_id: s1.id, date: d(0), due_date: d(5), lines: [{ item_id: leg.id, qty: 400, price: 160 }], note: '年節備料' }))
 
+  // ---------- 請購單 ----------
+  const rq1 = as('張師傅', () => L.saveRequisition({ date: d(-7), need_date: d(-4), lines: [{ item_id: soy.id, qty: 12 }], reason: '醬油快用完' }))
+  const rqPO = as('吳採購', () => L.convertRequisition(rq1.id))[0]
+  as('張師傅', () => L.receiveGoods({ purchase_order_id: rqPO.id, lines: [{ item_id: soy.id, qty: 12 }], date: d(-4) }))
+  as('劉廠長', () => L.saveRequisition({ date: d(0), need_date: d(3), lines: [{ item_id: sesame.id, qty: 24, note: '中秋檔期' }, { item_id: box.id, qty: 200 }], reason: '中秋檔期備料' }))
+
   // ---------- 門市：補貨 → 開班 → 銷售 ----------
   as('周店長', () => L.transfer({ from_bin_id: B['P-A01'], to_bin_id: B['S-01'], lines: [{ item_id: mayou.id, qty: 40 }], reason: '門市補貨', date: d(-6) }))
   // 退回的三杯雞 QC 複檢合格後放行回成品倉，再送到門市
@@ -213,7 +219,8 @@ export async function seedDemo() {
   // ---------- 倉儲：盤點與待核准調整 ----------
   const st = as('張師傅', () => L.createStocktake(findBy('warehouses', 'code', 'W3').id))
   as('張師傅', () => {
-    L.saveCount(st.id, st.lines.map((l) => ({ ...l, counted_qty: l.item_id === soy.id ? l.system_qty - 1 : l.system_qty })))
+    const soyLine = st.lines.find((l) => l.item_id === soy.id)
+    L.saveCount(st.id, st.lines.map((l) => ({ ...l, counted_qty: l === soyLine ? l.system_qty - 1 : l.system_qty })))
     L.submitStocktake(st.id)
   })
   as('張師傅', () => L.adjustStock({ item_id: leg.id, bin_id: B['F-A01'], lot_no: meat.lots[0].lot_no, qty: -24, reason: '冷凍庫門未關，2 箱解凍報廢' }))

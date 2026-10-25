@@ -1,11 +1,11 @@
 // 採購：採購單（金額門檻簽核）、進貨（建立原料批號、放到儲位）、退回供應商、應付帳款。
-import { get, where, insert, update, nextNo, transaction } from '../db/store'
+import { all, get, where, insert, update, nextNo, transaction, currentUser } from '../db/store'
 import {
   fail, need, needAny, round, sum, today, addDays, getSetting, taxRate, postJournal, assertOpen, docTotal,
   requestApproval, registerApproval, pendingFor, isSystem,
 } from './core'
 import { notify } from './notify'
-import { createLot, defaultBin, checkTemp, move, lotByNo, onHand, stockOf, binOf } from './inventory'
+import { createLot, defaultBin, checkTemp, move, nextDocNo, lotByNo, onHand, stockOf, binOf } from './inventory'
 
 export const PO_STATUS = { pending: '待核准', open: '未到貨', partial: '部分到貨', received: '已到齊', closed: '已結案', cancelled: '已作廢', rejected: '核准退回' }
 
@@ -82,6 +82,7 @@ export function receiveGoods({ supplier_id, purchase_order_id, lines, note = '',
     const valid = lines.filter((l) => l.item_id && Number(l.qty) > 0)
     if (!valid.length) fail('沒有輸入進貨數量')
     const tol = Number(getSetting('receive_tolerance'))
+    const receiptNo = nextDocNo('RC', date)
     const lots = []
     let amount = 0
     for (const l of valid) {
@@ -103,7 +104,7 @@ export function receiveGoods({ supplier_id, purchase_order_id, lines, note = '',
         mfg_date: l.mfg_date || date, exp_date: l.exp_date || addDays(date, item.shelf_days || 365), note,
       })
       lots.push(lot)
-      move({ item_id: l.item_id, lot_no: lot.lot_no, bin_id, qty: l.qty, type: 'receive', unit_cost: price, ref_type: po ? 'purchase_orders' : 'suppliers', ref_id: po?.id || supplier_id, note: note || po?.no || '直接進貨', doc_date: date })
+      move({ item_id: l.item_id, lot_no: lot.lot_no, bin_id, qty: l.qty, type: 'receive', unit_cost: price, ref_type: po ? 'purchase_orders' : 'suppliers', ref_id: po?.id || supplier_id, note: note || po?.no || '直接進貨', doc_date: date, doc_no: receiptNo })
     }
     if (po) {
       const newLines = po.lines.map((pl) => ({ ...pl, received: round((pl.received || 0) + sum(valid.filter((l) => l.item_id === pl.item_id), (l) => l.qty), 3) }))
@@ -114,14 +115,14 @@ export function receiveGoods({ supplier_id, purchase_order_id, lines, note = '',
     const sup = get('suppliers', supplier_id)
     const bill = insert('bills', {
       no: nextNo('bills', 'AP', date), supplier_id, purchase_order_id: po?.id || '', date, due_date: addDays(date, sup?.terms_days ?? 30),
-      amount, tax, total: round(amount + tax), paid: 0, credited: 0, status: 'unpaid', note: (po ? `採購單 ${po.no} 進貨` : '直接進貨') + (note ? `｜${note}` : ''),
+      amount, tax, total: round(amount + tax), paid: 0, credited: 0, status: 'unpaid', receipt_no: receiptNo, note: (po ? `採購單 ${po.no} 進貨` : '直接進貨') + (note ? `｜${note}` : ''),
     })
     postJournal({ date, memo: `進貨 ${sup?.name || ''} ${po?.no || ''}`, lines: [{ account: 1300, debit: amount }, { account: 1400, debit: tax }, { account: 2100, credit: amount + tax }], ref_type: 'bills', ref_id: bill.id })
     const lotText = (l) => `${get('items', l.item_id)?.name} ${l.qty}${get('items', l.item_id)?.unit || ''}（${l.lot_no}）`
     notify('po_received', { title: `進貨入庫：${sup?.name}`, lines: [po ? `採購單 ${po.no}` : '直接進貨', ...lots.map(lotText)], link: po ? `/purchase?open=${po.id}` : '/receiving' })
     const waiting = lots.filter((l) => l.qc_status === 'pending')
     if (waiting.length) notify('iqc_needed', { title: '進料等待檢驗', lines: [...waiting.map(lotText), '檢驗合格前不能領用'], link: '/qc' })
-    return { bill, lots }
+    return { bill, lots, receiptNo }
   })
 }
 
@@ -145,7 +146,7 @@ export function purchaseReturn({ lot_no, bin_id, qty, reason, date = today() }) 
       no: nextNo('returns', 'PR', date), kind: 'purchase', supplier_id: lot.supplier_id, date, lines: [{ item_id: lot.item_id, lot_no, bin_id, qty, price: lot.unit_cost }],
       disposition: 'return', reason, amount, tax, status: 'done',
     })
-    move({ item_id: lot.item_id, lot_no, bin_id, qty: -qty, type: 'purchase_return', unit_cost: lot.unit_cost, ref_type: 'returns', ref_id: doc.id, note: doc.no, doc_date: date })
+    move({ item_id: lot.item_id, lot_no, bin_id, qty: -qty, type: 'purchase_return', unit_cost: lot.unit_cost, ref_type: 'returns', ref_id: doc.id, note: doc.no, doc_date: date, doc_no: doc.no })
     // 優先沖這個批號的採購單帳款，沒有就開一張負的應付
     const bill = where('bills', (b) => b.supplier_id === lot.supplier_id && b.purchase_order_id && b.purchase_order_id === lot.purchase_order_id && billBalance(b) > 0)[0]
     if (bill) {
@@ -173,3 +174,76 @@ export function openPOQty(itemId) {
 }
 
 export { stockOf }
+
+// ---------- 請購單（鼎新流程：請購 → 採購 → 進貨） ----------
+export const REQ_STATUS = { open: '待採購', partial: '部分轉單', converted: '已轉採購', cancelled: '已取消' }
+export const reqStatus = (r) => (r.status === 'cancelled' ? 'cancelled' : r.lines.every((l) => l.purchase_order_id) ? 'converted' : r.lines.some((l) => l.purchase_order_id) ? 'partial' : 'open')
+
+export function saveRequisition(data, id) {
+  return transaction(() => {
+    needAny(['purchase', 'wms', 'production'], 2)
+    const lines = (data.lines || []).filter((l) => l.item_id && Number(l.qty) > 0).map((l) => ({ item_id: l.item_id, qty: Number(l.qty), note: l.note || '', purchase_order_id: l.purchase_order_id || '' }))
+    if (!lines.length) fail('請至少輸入一項要請購的原料或包材')
+    for (const l of lines) if (get('items', l.item_id)?.type === 'product') fail('請購單只能請購原料或包材')
+    const old = get('requisitions', id)
+    if (old && reqStatus(old) !== 'open') fail('已經轉採購的請購單不能修改')
+    const row = { ...data, lines }
+    if (old) return update('requisitions', id, row)
+    const r = insert('requisitions', { no: nextNo('requisitions', 'RQ', data.date || today()), date: today(), requester_id: currentUser()?.id || '', status: 'open', ...row })
+    notify('requisition_created', {
+      title: `新的請購單 ${r.no}`,
+      lines: [lines.map((l) => `${get('items', l.item_id)?.name} ${l.qty} ${get('items', l.item_id)?.unit || ''}`).join('、'), r.need_date && `需要日期：${r.need_date}`, r.reason && `原因：${r.reason}`, `請購人：${currentUser()?.name || ''}`],
+      link: '/requisitions',
+    })
+    return r
+  })
+}
+
+export function cancelRequisition(id) {
+  return transaction(() => {
+    needAny(['purchase', 'wms', 'production'], 2)
+    const r = get('requisitions', id)
+    if (reqStatus(r) !== 'open') fail('已經轉採購的請購單不能取消')
+    update('requisitions', id, { status: 'cancelled' })
+  })
+}
+
+// 轉採購單：依每一列選的供應商分單（沒選就用最近一次跟誰買）
+export function convertRequisition(id, supplierByItem = {}) {
+  return transaction(() => {
+    need('purchase', 2)
+    const r = get('requisitions', id)
+    if (reqStatus(r) === 'cancelled') fail('請購單已取消')
+    const todo = r.lines.filter((l) => !l.purchase_order_id)
+    if (!todo.length) fail('這張請購單已全部轉成採購單')
+    const groups = {}
+    for (const l of todo) {
+      const sup = supplierByItem[l.item_id] || lastPurchase(l.item_id)?.supplier_id
+      if (!sup) fail(`${get('items', l.item_id)?.name} 沒有採購紀錄，請選擇供應商`)
+      ;(groups[sup] ||= []).push(l)
+    }
+    const made = {}
+    for (const [supplier_id, ls] of Object.entries(groups)) {
+      const po = savePurchaseOrder({
+        supplier_id, requisition_id: r.id, date: today(), due_date: r.need_date || addDays(today(), 3),
+        lines: ls.map((l) => ({ item_id: l.item_id, qty: l.qty, price: lastPurchase(l.item_id)?.lines.find((x) => x.item_id === l.item_id)?.price ?? get('items', l.item_id)?.cost ?? 0 })),
+        note: `由請購單 ${r.no} 轉入`,
+      })
+      for (const l of ls) made[l.item_id] = po.id
+    }
+    const lines = r.lines.map((l) => (made[l.item_id] ? { ...l, purchase_order_id: made[l.item_id] } : l))
+    update('requisitions', id, { lines, status: reqStatus({ ...r, lines }) })
+    return Object.values(made).filter((v, i, a) => a.indexOf(v) === i).map((pid) => get('purchase_orders', pid))
+  })
+}
+
+// 依安全庫存產生請購單（可用 + 已訂未到 < 安全量的原料包材）
+export function lowStockRequisition() {
+  const lines = all('items')
+    .filter((i) => i.type !== 'product' && i.active !== false && i.safety_stock > 0)
+    .map((i) => ({ item: i, short: round(i.safety_stock * 1.5 - stockOf(i.id) - openPOQty(i.id), 3) }))
+    .filter((x) => stockOf(x.item.id) + openPOQty(x.item.id) < x.item.safety_stock && x.short > 0)
+    .map((x) => ({ item_id: x.item.id, qty: Math.ceil(x.short), note: `可用 ${stockOf(x.item.id)}，安全量 ${x.item.safety_stock}` }))
+  if (!lines.length) fail('目前沒有低於安全庫存的原料')
+  return saveRequisition({ date: today(), need_date: addDays(today(), 3), lines, reason: '低於安全庫存，補到安全量的 1.5 倍' })
+}

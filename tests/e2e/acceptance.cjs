@@ -68,7 +68,7 @@ async function noBadToast() {
 // 本機儲存會延遲約 150ms 合併寫入，讀之前稍等
 const db = async () => {
   await page.waitForTimeout(400)
-  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v3')))
+  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v4')))
 }
 const btn = (name, opt = {}) => page.getByRole('button', { name, ...opt })
 const modal = () => page.locator('.modal').last()
@@ -424,6 +424,55 @@ const modal = () => page.locator('.modal').last()
     await go('/notify?tab=contacts')
     await page.locator('tr', { hasText: '陳小明' }).getByText('已暫停').waitFor()
     return { detail: '後台「已綁定人員」同步顯示已暫停', shot: await shot('line-contacts') }
+  })
+
+  await step('N1', '請購單：現場提出請購 → 採購轉成採購單（鼎新流程）', async () => {
+    await loginAs('張師傅', '5555')
+    await go('/requisitions')
+    await btn('＋ 新請購單').click()
+    const m = modal()
+    await m.locator('select').first().selectOption({ label: 'R007 醬油（瓶）' })
+    await m.locator('input[type=number]').first().fill('24')
+    await m.locator('input').nth(2).fill('下週大單備料')
+    await m.getByRole('button', { name: '送出' }).click()
+    await toast('請購單已送出')
+    await loginAs('吳採購', '3333')
+    await go('/requisitions')
+    await page.locator('tr.click', { hasText: '下週大單備料' }).click()
+    const s = await shot('requisition')
+    await modal().getByRole('button', { name: '轉成採購單' }).click()
+    await toast('已轉成 1 張採購單')
+    const d = await db()
+    const rq = d.requisitions.find((r) => r.reason === '下週大單備料')
+    const po = d.purchase_orders.find((p) => p.requisition_id === rq.id)
+    if (!po) throw new Error('沒有產生採購單')
+    return { detail: `請購單 ${rq.no} → 採購單 ${po.no}（醬油 24 瓶，向上次的供應商採購）`, shot: s }
+  })
+
+  await step('N2', '表單列印：出貨單、製令單、進貨單、批號標籤都能產生 A4 / 標籤版面', async () => {
+    await loginAs('王老闆', '0000')
+    await go('/shipping')
+    await page.locator('tr.click').first().click()
+    await modal().getByRole('link', { name: /出貨單/ }).click()
+    await page.locator('.pf-title', { hasText: '出貨單（銷貨單）' }).waitFor()
+    const t = await page.locator('.pf-totals').innerText()
+    if (!/含稅合計/.test(t)) throw new Error('沒有金額合計')
+    const s = await shot('print-shipment')
+    await go('/forms')
+    for (const [type, title] of [['製令單（生產工單）', '製令單'], ['庫存單據（進貨／領料／退料／入庫／調整）', '單']]) {
+      await go('/forms')
+      await page.locator('.forms-type', { hasText: type }).click()
+      await page.locator('.forms-doc').first().getByRole('link').click()
+      await page.locator('.pf-title', { hasText: title }).first().waitFor()
+    }
+    await go('/forms')
+    await page.locator('.forms-type', { hasText: '批號標籤' }).click()
+    await page.locator('.forms-doc').first().getByRole('link').click()
+    await page.locator('.pf-label-card').first().waitFor()
+    const n = await page.locator('.pf-label-card').count()
+    if (n !== 4) throw new Error('標籤張數 ' + n)
+    if (!(await page.locator('.pf-label-card svg.qr').count())) throw new Error('標籤沒有 QR Code')
+    return { detail: '出貨單含未稅、稅額、含稅合計與客戶簽收欄；製令單、進貨單可開啟；批號標籤一次 4 張含 QR Code', shot: s }
   })
 
   await browser.close()

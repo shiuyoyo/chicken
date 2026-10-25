@@ -85,10 +85,15 @@ export const SCHEMA = {
     group: '銷售',
     cols: { no: 'text', customer_id: 'text', quotation_id: 'text', date: 'date', due_date: 'date', status: 'text', lines: 'jsonb', total: 'numeric', approved_total: 'numeric', note: 'text' },
   },
+  requisitions: {
+    label: '請購單',
+    group: '採購',
+    cols: { no: 'text', date: 'date', need_date: 'date', requester_id: 'text', status: 'text', lines: 'jsonb', reason: 'text', note: 'text' },
+  },
   purchase_orders: {
     label: '採購單',
     group: '採購',
-    cols: { no: 'text', supplier_id: 'text', sales_order_id: 'text', date: 'date', due_date: 'date', status: 'text', lines: 'jsonb', total: 'numeric', approved_total: 'numeric', note: 'text' },
+    cols: { no: 'text', supplier_id: 'text', sales_order_id: 'text', requisition_id: 'text', date: 'date', due_date: 'date', status: 'text', lines: 'jsonb', total: 'numeric', approved_total: 'numeric', note: 'text' },
   },
   work_orders: {
     label: '生產工單',
@@ -110,7 +115,7 @@ export const SCHEMA = {
     label: '庫存異動',
     group: '倉儲',
     cols: {
-      date: 'timestamptz', doc_date: 'date', item_id: 'text', lot_no: 'text', bin_id: 'text', from_bin_id: 'text', qty: 'numeric', type: 'text',
+      date: 'timestamptz', doc_date: 'date', doc_no: 'text', item_id: 'text', lot_no: 'text', bin_id: 'text', from_bin_id: 'text', qty: 'numeric', type: 'text',
       unit_cost: 'numeric', ref_type: 'text', ref_id: 'text', note: 'text', user_name: 'text',
     },
   },
@@ -181,7 +186,7 @@ export const SCHEMA = {
     group: '會計',
     cols: {
       no: 'text', supplier_id: 'text', purchase_order_id: 'text', date: 'date', due_date: 'date',
-      amount: 'numeric', tax: 'numeric', total: 'numeric', paid: 'numeric', credited: 'numeric', status: 'text', note: 'text',
+      amount: 'numeric', tax: 'numeric', total: 'numeric', paid: 'numeric', credited: 'numeric', status: 'text', receipt_no: 'text', note: 'text',
     },
   },
   payments: {
@@ -200,7 +205,7 @@ export const REFS = {
   sales_order_id: 'sales_orders', purchase_order_id: 'purchase_orders', work_order_id: 'work_orders', quotation_id: 'quotations',
   opportunity_id: 'opportunities', shipment_id: 'shipments', invoice_id: 'invoices', bill_id: 'bills', warehouse_id: 'warehouses',
   bin_id: 'bins', default_bin_id: 'bins', from_bin_id: 'bins', to_bin_id: 'bins', price_list_id: 'price_lists', owner_id: 'users',
-  user_id: 'users', shift_id: 'pos_shifts', requested_role_id: 'roles', approved_by: 'users',
+  user_id: 'users', shift_id: 'pos_shifts', requested_role_id: 'roles', approved_by: 'users', requester_id: 'users', requisition_id: 'requisitions',
 }
 
 export function schemaSQL() {

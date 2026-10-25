@@ -11,6 +11,7 @@ export const NOTIFY_EVENTS = {
   approval_requested: { label: '有單據等你核准', who: '該模組有「核准」權限的人', fixed: true },
   approval_decided: { label: '你送出的申請有結果', who: '申請人', fixed: true },
   order_created: { label: '新訂單成立', roles: ['管理者', '業務主管', '廠長'], owner: true },
+  requisition_created: { label: '新的請購單', roles: ['採購'] },
   po_received: { label: '進貨入庫', roles: ['採購', '廠長'] },
   iqc_needed: { label: '進料等待檢驗', roles: ['品管'] },
   wo_created: { label: '新的生產工單', roles: ['廠長', '現場人員'] },

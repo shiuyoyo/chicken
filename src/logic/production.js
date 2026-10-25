@@ -3,7 +3,7 @@
 import { all, get, where, insert, update, nextNo, nowISO, transaction } from '../db/store'
 import { fail, need, round, sum, today, addDays, userName, getSetting, postJournal, assertOpen } from './core'
 import { notify } from './notify'
-import { allocate, move, stockOf, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind } from './inventory'
+import { allocate, move, nextDocNo, stockOf, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind } from './inventory'
 
 export const WO_STATUS = {
   planned: '待領料', issued: '已領料', cooking: '烹煮中', done: '待 QC', qc_pass: 'QC 合格', qc_fail: 'QC 不合格', closed: '已結案', cancelled: '已取消',
@@ -89,6 +89,7 @@ export function issueMaterials(woId, lines, { date = today() } = {}) {
     const needs = woNeeds(wo)
     const before = Object.fromEntries(valid.map((l) => [l.item_id, stockOf(l.item_id, date)]))
     const line = lineBin()
+    const docNo = nextDocNo('MI', date)
     let value = 0
     for (const l of valid) {
       const n = needs.find((x) => x.item_id === l.item_id)
@@ -98,8 +99,8 @@ export function issueMaterials(woId, lines, { date = today() } = {}) {
       for (const a of allocate(l.item_id, l.qty, { lot_no: l.lot_no || undefined, date })) {
         const c = lotCost(a.lot_no, a.item_id)
         value += a.qty * c
-        move({ ...a, qty: -a.qty, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date })
-        move({ ...a, bin_id: line, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no}｜自 ${binOf(a.bin_id)?.code}`, from_bin_id: a.bin_id, doc_date: date })
+        move({ ...a, qty: -a.qty, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date, doc_no: docNo })
+        move({ ...a, bin_id: line, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no}｜自 ${binOf(a.bin_id)?.code}`, from_bin_id: a.bin_id, doc_date: date, doc_no: docNo })
       }
     }
     update('work_orders', wo.id, { status: wo.status === 'planned' ? 'issued' : wo.status, start_at: wo.start_at || nowISO() })
@@ -123,11 +124,12 @@ export function feedMaterials(woId, lines, { date = today() } = {}) {
       if (short > 0) issueMaterials(wo.id, [{ item_id: l.item_id, qty: short }], { date })
     }
     const feeds = [...(get('work_orders', wo.id).feeds || [])]
+    const docNo = nextDocNo('FD', date)
     for (const l of valid) {
       for (const a of allocate(l.item_id, l.qty, { kinds: ['line'], bin_id: line, date })) {
         const c = lotCost(a.lot_no, a.item_id)
-        move({ ...a, qty: -a.qty, type: 'feed', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date })
-        feeds.push({ at: nowISO(), item_id: a.item_id, lot_no: a.lot_no, qty: a.qty, unit_cost: c, user: userName() })
+        move({ ...a, qty: -a.qty, type: 'feed', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date, doc_no: docNo })
+        feeds.push({ at: nowISO(), item_id: a.item_id, lot_no: a.lot_no, qty: a.qty, unit_cost: c, user: userName(), doc_no: docNo })
       }
     }
     const cur = get('work_orders', wo.id)
@@ -163,7 +165,7 @@ export function recordOutput(woId, { qty, waste = 0, date = today() }) {
     for (const l of woLots(wo)) if (l.unit_cost !== unit_cost) update('lots', l.id, { unit_cost })
     const bin = defaultBin(wo.product_id)
     checkTemp(wo.product_id, bin)
-    move({ item_id: wo.product_id, lot_no: lot.lot_no, bin_id: bin, qty, type: 'output', unit_cost, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date })
+    move({ item_id: wo.product_id, lot_no: lot.lot_no, bin_id: bin, qty, type: 'output', unit_cost, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date, doc_no: nextDocNo('MS', date) })
     update('work_orders', wo.id, { output_qty: round(outBefore + qty, 3), waste_qty: round((wo.waste_qty || 0) + Number(waste || 0), 3), status: 'done', end_at: nowISO() })
     // 在製品轉成品：本次轉出 = 累計投料成本 × 本次產出比例
     const value = round(qty * unit_cost)
@@ -189,14 +191,15 @@ export function closeWorkOrder(woId, { date = today() } = {}) {
       if (m.from_bin_id) byLot[k].from = m.from_bin_id
     }
     let back = 0
+    const docNo = nextDocNo('MR', date)
     for (const r of Object.values(byLot)) {
       const qty = round(Math.min(r.qty, onHand({ item_id: r.item_id, bin_id: line, lot_no: r.lot_no })), 3)
       if (qty <= 0) continue
       const to = r.from && binKind(r.from) === 'storage' ? r.from : defaultBin(r.item_id)
       const c = lotCost(r.lot_no, r.item_id)
       back += qty * c
-      move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: line, qty: -qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date })
-      move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: to, qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date })
+      move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: line, qty: -qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date, doc_no: docNo })
+      move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: to, qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date, doc_no: docNo })
     }
     if (back) postJournal({ date, memo: `退料 ${wo.no}`, lines: [{ account: 1300, debit: back }, { account: 1320, credit: back }], ref_type: 'work_orders', ref_id: wo.id })
     // 在製品剩餘（四捨五入差額）轉生產損耗，讓每張工單的在製品歸零

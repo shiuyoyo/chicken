@@ -53,7 +53,7 @@ export function shipGoods({ sales_order_id, lines, boxes, pack_mode = '紙箱', 
     for (const a of alloc) {
       const c = lotCost(a.lot_no, a.item_id)
       cogs += a.qty * c
-      move({ ...a, qty: -a.qty, type: 'ship', unit_cost: c, ref_type: 'shipments', ref_id: shipment.id, note: shipment.no, doc_date: date })
+      move({ ...a, qty: -a.qty, type: 'ship', unit_cost: c, ref_type: 'shipments', ref_id: shipment.id, note: shipment.no, doc_date: date, doc_no: shipment.no })
     }
     postJournal({ date, memo: `出貨成本 ${shipment.no}`, lines: [{ account: 5100, debit: cogs }, { account: 1310, credit: cogs }], ref_type: 'shipments', ref_id: shipment.id })
     // 全部出完自動結案
@@ -135,7 +135,7 @@ export function executeSalesReturn(id) {
   for (const l of r.lines) {
     const c = lotCost(l.lot_no, l.item_id)
     cost += l.qty * c
-    if (r.disposition === 'restock') move({ item_id: l.item_id, lot_no: l.lot_no, bin_id: quarantineBin(), qty: l.qty, type: 'sales_return', unit_cost: c, ref_type: 'returns', ref_id: r.id, note: r.no, doc_date: r.date })
+    if (r.disposition === 'restock') move({ item_id: l.item_id, lot_no: l.lot_no, bin_id: quarantineBin(), qty: l.qty, type: 'sales_return', unit_cost: c, ref_type: 'returns', ref_id: r.id, note: r.no, doc_date: r.date, doc_no: r.no })
   }
   postJournal({
     date: r.date,

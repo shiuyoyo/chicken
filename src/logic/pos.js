@@ -91,7 +91,7 @@ export function posCheckout({ shift_id, cart, discount = 0, method = '現金', r
     for (const a of alloc) {
       const c = lotCost(a.lot_no, a.item_id)
       cogs += a.qty * c
-      move({ item_id: a.item_id, lot_no: a.lot_no, bin_id: a.bin_id, qty: -a.qty, type: 'pos', unit_cost: c, ref_type: 'pos_sales', ref_id: sale.id, note: sale.no, doc_date: date })
+      move({ item_id: a.item_id, lot_no: a.lot_no, bin_id: a.bin_id, qty: -a.qty, type: 'pos', unit_cost: c, ref_type: 'pos_sales', ref_id: sale.id, note: sale.no, doc_no: sale.no, doc_date: date })
     }
     const cashAcct = method === '現金' ? 1100 : 1130
     postJournal({ date, memo: `門市銷售 ${sale.no}（${method}）`, lines: [{ account: cashAcct, debit: total }, { account: 4100, credit: total - tax }, { account: 2200, credit: tax }], ref_type: 'pos_sales', ref_id: sale.id })
@@ -109,7 +109,7 @@ function doVoid(id) {
   if (s.status !== 'done') fail('這筆已作廢')
   assertOpen(today())
   for (const m of where('stock_moves', (m) => m.ref_type === 'pos_sales' && m.ref_id === id))
-    move({ item_id: m.item_id, lot_no: m.lot_no, bin_id: m.bin_id, qty: -m.qty, type: 'pos', unit_cost: m.unit_cost, ref_type: 'pos_sales', ref_id: id, note: `作廢 ${s.no}` })
+    move({ item_id: m.item_id, lot_no: m.lot_no, bin_id: m.bin_id, qty: -m.qty, type: 'pos', unit_cost: m.unit_cost, ref_type: 'pos_sales', ref_id: id, note: `作廢 ${s.no}`, doc_no: s.no })
   for (const j of where('journal', (j) => j.ref_type === 'pos_sales' && j.ref_id === id))
     postJournal({ memo: `作廢沖銷 ${j.no}`, lines: j.lines.map((l) => ({ account: l.account, debit: l.credit, credit: l.debit })), ref_type: 'pos_void', ref_id: id })
   if (s.customer_id && s.points) {

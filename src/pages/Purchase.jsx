@@ -3,8 +3,7 @@ import { all, get, where } from '../db/store'
 import * as L from '../logic'
 import {
   Modal, Field, Input, Select, LineEditor, Table, Badge, PendingBadge, Search, matches, money, qty, itemName, itemUnit, partyName, partyOptions,
-  binOptions, itemOptions, DocLink, LotLink, attempt, ask, useOpen, CrudPage, altText,
-} from '../ui'
+  binOptions, itemOptions, DocLink, LotLink, attempt, ask, useOpen, CrudPage, altText, PrintButton } from '../ui'
 
 const poBadge = (po) => {
   const s = L.poStatus(po)
@@ -57,6 +56,7 @@ export function PurchaseOrders() {
             {canEdit && L.poStatus(cur) === 'partial' && <button className="btn" onClick={async () => (await ask('結案後不再進貨，確定？')) && attempt(() => L.closePurchaseOrder(cur.id), '已結案')}>結案</button>}
             <span style={{ flex: 1 }} />
             {canEdit && ['open', 'pending', 'rejected', 'partial'].includes(L.poStatus(cur)) && <button className="btn" onClick={() => { setOpen(null); setEdit(JSON.parse(JSON.stringify(cur))) }}>編輯</button>}
+            <PrintButton type="purchase_order" id={cur.id} />
             {canRecv && ['open', 'partial'].includes(L.poStatus(cur)) && <button className="btn primary" onClick={() => { setOpen(null); startRecv(cur) }}>進貨</button>}
           </>}>
           <div className="stack">
@@ -77,6 +77,7 @@ export function PurchaseOrders() {
               { h: '廠商批號', r: (l) => l.supplier_lot || '—' },
               { h: '有效期限', r: (l) => l.exp_date },
               { h: 'IQC', r: (l) => <Badge s={l.qc_status}>{l.qc_status === 'pending' ? '待檢' : undefined}</Badge> },
+              { h: '進貨單', r: (l) => { const no = where('stock_moves', (m) => m.lot_no === l.lot_no && m.type === 'receive')[0]?.doc_no; return <PrintButton sm type="doc" id={no} label={no} /> } },
             ]} />
             <div className="small">應付帳款：{where('bills', (b) => b.purchase_order_id === cur.id).map((b) => `${b.no} ${money(b.total)}（未付 ${money(L.billBalance(b))}）`).join('、') || '—'}</div>
           </div>
@@ -172,6 +173,8 @@ export function Receiving() {
           { h: '採購單', r: (l) => (l.purchase_order_id ? <DocLink t="purchase_orders" id={l.purchase_order_id} /> : '直接進貨') },
           { h: '有效期限', r: (l) => (L.isExpired(l) ? <Badge kind="bad">{l.exp_date}</Badge> : l.exp_date) },
           { h: 'IQC', r: (l) => <Badge s={l.qc_status}>{l.qc_status === 'pending' ? '待檢' : undefined}</Badge> },
+          { h: '進貨單', r: (l) => { const no = where('stock_moves', (m) => m.lot_no === l.lot_no && m.type === 'receive')[0]?.doc_no; return <PrintButton sm type="doc" id={no} label={no} /> } },
+          { h: '', r: (l) => <PrintButton sm type="label" id={l.lot_no} label="標籤" params={{ copies: 2 }} /> },
         ]} />
       </div>
       {recv && <ReceiveModal data={recv} onClose={() => setRecv(null)} />}

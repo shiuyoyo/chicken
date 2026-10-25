@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, get, where } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Select, Table, Badge, Tabs, Search, matches, money, qty, dt, itemName, itemUnit, partyName, itemOptions, attempt, ask, toast, useOpen, DocLink, LotLink, altText } from '../ui'
+import { Modal, Field, Input, Select, Table, Badge, Tabs, Search, matches, money, qty, dt, itemName, itemUnit, partyName, itemOptions, attempt, ask, toast, useOpen, DocLink, LotLink, altText, PrintButton } from '../ui'
 
 const lineOptions = () => (L.getSetting('lines') || []).map((l) => ({ value: l.name, label: `${l.name}（產能 ${l.capacity}/天）` }))
 
@@ -102,6 +102,7 @@ function WorkOrderModal({ id, onClose }) {
       footer={<>
         {canEdit && wo.status === 'planned' && <button className="btn danger" onClick={async () => (await ask('取消這張工單？', { danger: true })) && attempt(() => L.cancelWorkOrder(wo.id), '已取消')}>取消工單</button>}
         {canEdit && wo.status !== 'planned' && <button className="btn" onClick={async () => (await ask('結案後產線剩料會退回原儲位，在製品差額轉損耗。確定結案？')) && attempt(() => L.closeWorkOrder(wo.id), '工單已結案')}>工單結案</button>}
+        <PrintButton type="work_order" id={wo.id} label="製令單" />
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>關閉</button>
       </>}>
@@ -164,6 +165,7 @@ function WorkOrderModal({ id, onClose }) {
             { h: '單位成本', cls: 'num', r: (l) => money(l.unit_cost) },
             { h: '有效期限', r: (l) => l.exp_date },
             { h: 'QC', r: (l) => <Badge s={l.qc_status}>{l.qc_status === 'pending' ? '待檢' : undefined}</Badge> },
+            { h: '', r: (l) => <PrintButton sm type="label" id={l.lot_no} label="標籤" params={{ copies: 4 }} /> },
           ]} />
         </div>
       )}
@@ -173,6 +175,12 @@ function WorkOrderModal({ id, onClose }) {
           <div className="card kpi"><div className="label">標準成本 / {product?.unit}</div><div className="value">{money(cost.std)}</div></div>
           <div className="card kpi"><div className="label">實際成本 / {product?.unit}</div><div className="value">{cost.actual ? money(cost.actual) : '—'}</div><div className="sub">{cost.actual ? `差異 ${cost.variance > 0 ? '+' : ''}${cost.variance}` : '產出後計算'}</div></div>
           <div className="card kpi"><div className="label">良率（產出 / 計畫）</div><div className="value">{cost.yieldPct}%</div><div className="sub">損耗 {qty(wo.waste_qty, 'kg')}</div></div>
+        </div>
+      )}
+      {tab === 'log' && (
+        <div className="row" style={{ marginBottom: 8 }}>
+          <span className="small muted">單據：</span>
+          {[...new Set(where('stock_moves', (m) => m.ref_id === wo.id && m.doc_no).map((m) => m.doc_no))].map((no) => <PrintButton key={no} sm type="doc" id={no} label={`${L.DOC_TYPES[no.replace(/\d.*$/, '')]} ${no}`} />)}
         </div>
       )}
       {tab === 'log' && (

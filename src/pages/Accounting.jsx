@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, get } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Select, Table, Badge, Tabs, Kpi, money, partyName, attempt, ask, useTab, DocLink } from '../ui'
+import { Modal, Field, Input, Select, Table, Badge, Tabs, Kpi, money, partyName, attempt, ask, useTab, DocLink, PrintButton } from '../ui'
 
 const acctOptions = (prefix) =>
   Object.entries(L.ACCOUNTS)
@@ -56,6 +56,7 @@ export default function Accounting() {
             { h: '已收 / 折讓', cls: 'num', r: (i) => `${money(i.paid)} / ${money(i.credited)}` },
             { h: '未收', cls: 'num', r: (i) => money(L.invoiceBalance(i)) },
             { h: '到期', r: (i) => aging(i.due_date, L.invoiceBalance(i)) },
+            { h: '列印', r: (i) => <PrintButton sm type="invoice" id={i.id} label="請款單" /> },
             { h: '', r: (i) => canEdit && L.invoiceBalance(i) > 0 && <button className="btn sm primary" onClick={() => setPay({ kind: 'in', id: i.id, amount: L.invoiceBalance(i), method: '匯款', date: L.today() })}>收款</button> },
           ]} />
         </div>
@@ -85,6 +86,7 @@ export default function Accounting() {
             { h: '日期', r: (p) => p.date },
             { h: '方式', r: (p) => p.method },
             { h: '金額', cls: 'num', r: (p) => money(p.amount) },
+            { h: '', r: (p) => <PrintButton sm type="payment" id={p.id} /> },
           ]} />
         </div>
       )}
@@ -118,6 +120,7 @@ export default function Accounting() {
             { h: '傳票', r: (j) => j.no },
             { h: '日期', r: (j) => j.date },
             { h: '摘要', r: (j) => j.memo },
+            { h: '', r: (j) => <PrintButton sm type="journal" id={j.id} /> },
             { h: '分錄', r: (j) => <div className="small">{j.lines.map((l, i) => <div key={i}>{l.debit ? '借' : '　貸'} {l.account} {L.ACCOUNTS[l.account]}　{money(l.debit || l.credit)}</div>)}</div> },
           ]} />
         </div>
@@ -164,6 +167,7 @@ function AgingTable({ kind }) {
         { h: kind === 'ar' ? '客戶' : '供應商', r: (r) => (kind === 'ar' ? <DocLink t="customers" id={r.party} /> : partyName('suppliers', r.party)) },
         ...L.AGING_BUCKETS.map((b, i) => ({ h: b, cls: 'num', r: (r) => (r.buckets[i] ? <span className={i >= 2 ? 'tone-bad' : ''}>{money(r.buckets[i])}</span> : '') })),
         { h: '合計', cls: 'num', r: (r) => <b>{money(r.total)}</b> },
+        { h: '', r: (r) => <PrintButton sm type="statement" id={`${kind === 'ar' ? 'customers' : 'suppliers'}:${r.party}`} label="對帳單" /> },
       ]} />
     </div>
   )

@@ -3,7 +3,7 @@ import { useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { get, currentUser } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Table, Badge, money, qty, dt, itemName, attempt, ask, toast } from '../ui'
+import { Modal, Field, Input, Table, Badge, money, qty, dt, itemName, attempt, ask, toast, PrintButton } from '../ui'
 
 export default function Pos() {
   const nav = useNavigate()
@@ -142,7 +142,7 @@ function Register({ shift }) {
         <button className="big-btn ok" disabled={!cart.length || (method === '現金' && received !== '' && change < 0)} onClick={checkout}>結帳 {money(total)}</button>
       </section>
       {receipt && (
-        <Modal title="交易完成" onClose={() => setReceipt(null)} footer={<button className="btn primary" onClick={() => setReceipt(null)}>下一位客人</button>}>
+        <Modal title="交易完成" onClose={() => setReceipt(null)} footer={<><PrintButton type="pos_receipt" id={receipt.id} label="印收據" /><button className="btn primary" onClick={() => setReceipt(null)}>下一位客人</button></>}>
           <div className="receipt">
             <div className="center"><b>{L.getSetting('company_name')}</b></div>
             <div className="center small">電子發票 {receipt.gui_no}</div>

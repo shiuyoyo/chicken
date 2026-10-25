@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, get, where } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Select, Table, Badge, Search, matches, money, qty, itemName, itemUnit, partyName, attempt, useOpen, DocLink, LotLink } from '../ui'
+import { Modal, Field, Input, Select, Table, Badge, Search, matches, money, qty, itemName, itemUnit, partyName, attempt, useOpen, DocLink, LotLink, PrintButton } from '../ui'
 
 export default function Shipping() {
   const [q, setQ] = useState('')
@@ -118,6 +118,8 @@ function SlipModal({ id, onClose }) {
       footer={<>
         {s.status === 'shipped' && L.can('shipping', 2) && <button className="btn" onClick={() => attempt(() => L.markDelivered(s.id), '已標記送達')}>標記已送達</button>}
         {!inv && (L.can('accounting', 2) || L.can('shipping', 2)) && <button className="btn primary" onClick={() => attempt(() => L.invoiceShipment(s.id), '已開立發票與應收帳款')}>開立發票 / 應收</button>}
+        <PrintButton type="shipment" id={s.id} label="出貨單" />
+        <PrintButton type="pick_list" id={s.id} label="揀貨單" />
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>關閉</button>
       </>}>

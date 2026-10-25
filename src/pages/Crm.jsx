@@ -4,8 +4,7 @@ import { all, get, where } from '../db/store'
 import * as L from '../logic'
 import {
   Modal, Field, Input, Select, Check, Table, Badge, Tabs, Kpi, Search, matches, money, qty, dt, itemName, itemUnit, partyName, partyOptions,
-  userOptions, itemOptions, LineEditor, DocLink, attempt, ask, toast, useTab, useOpen, CrudPage,
-} from '../ui'
+  userOptions, itemOptions, LineEditor, DocLink, attempt, ask, toast, useTab, useOpen, CrudPage, PrintButton } from '../ui'
 
 const levelKind = { VIP: 'primary', A: 'ok', B: 'info', C: '' }
 
@@ -136,6 +135,7 @@ export function Customer360() {
         <Badge kind={c.status === '往來中' ? 'ok' : 'warn'}>{c.status}</Badge>
         {canEdit && <button className="btn" onClick={() => setEdit(c)}>編輯</button>}
         {canEdit && <button className="btn" onClick={() => setAct({ customer_id: c.id, type: '電話', date: L.today() })}>＋ 互動紀錄</button>}
+        {L.can('accounting', 1) && <PrintButton type="statement" id={`customers:${c.id}`} label="對帳單" />}
         {L.can('sales', 2) && <button className="btn primary" onClick={() => nav(`/sales?new=1&customer=${c.id}`)}>＋ 下訂單</button>}
       </div>
       <div className="grid grid-kpi">
@@ -429,6 +429,7 @@ export function Quotations() {
               <button className="btn primary" onClick={() => { const so = attempt(() => L.convertQuotation(cur.id), '已轉成銷售訂單'); if (so) nav('/progress/' + so.id) }}>轉成訂單</button>
             )}
             {cur.sales_order_id && <DocLink t="sales_orders" id={cur.sales_order_id}>查看訂單</DocLink>}
+            <PrintButton type="quotation" id={cur.id} />
           </>}>
           <div className="stack">
             <div className="row"><span>客戶：<DocLink t="customers" id={cur.customer_id} /></span><span className="muted">報價日 {cur.date}，有效至 {cur.valid_until}</span><Badge s={L.quoteStatus(cur)} /></div>

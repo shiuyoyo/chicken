@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, where } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Table, Badge, Tabs, Search, matches, qty, itemName, itemUnit, partyName, attempt, ask, useTab, LotLink, DocLink } from '../ui'
+import { Modal, Field, Input, Table, Badge, Tabs, Search, matches, qty, itemName, itemUnit, partyName, attempt, ask, useTab, LotLink, DocLink, PrintButton } from '../ui'
 
 export default function QC() {
   const [tab, setTab] = useTab('pending')
@@ -63,6 +63,7 @@ export default function QC() {
             { h: '抽樣 / 不良', cls: 'num', r: (r) => `${r.sample_size} / ${r.defect_qty}` },
             { h: '結果', r: (r) => <Badge s={r.result} /> },
             { h: '檢驗員', r: (r) => r.inspector },
+            { h: '', r: (r) => <PrintButton sm type="inspection" id={r.id} /> },
             { h: '日期', r: (r) => r.date },
           ]} />
         </div>

@@ -150,6 +150,33 @@ describe('銷售與 CRM', () => {
   })
 })
 
+describe('請購單', () => {
+  it('現場提出請購 → 採購轉成採購單（依供應商分單）→ 請購單變已轉採購', () => {
+    const rq = all('requisitions').find((r) => L.reqStatus(r) === 'open')
+    expect(rq.lines.length).toBe(2)
+    loginAs('小美')
+    expect(() => L.convertRequisition(rq.id)).toThrow(/權限不足/)
+    loginAs('吳採購')
+    const pos = L.convertRequisition(rq.id)
+    expect(pos.length).toBe(2) // 黑麻油跟調味批發買、外箱跟包材行買
+    expect(pos.every((p) => p.requisition_id === rq.id)).toBe(true)
+    expect(L.reqStatus(get('requisitions', rq.id))).toBe('converted')
+    expect(() => L.convertRequisition(rq.id)).toThrow(/全部轉成採購單/)
+    loginAs('劉廠長')
+    expect(() => L.cancelRequisition(rq.id)).toThrow(/不能取消/)
+  })
+  it('依安全庫存自動產生請購單', () => {
+    loginAs('張師傅')
+    const rq = L.lowStockRequisition()
+    expect(rq.lines.some((l) => l.item_id === itemByCode('R004').id)).toBe(true)
+  })
+  it('每一筆庫存異動都有單據號碼', () => {
+    expect(all('stock_moves').filter((m) => !m.doc_no)).toEqual([])
+    const kinds = new Set(all('stock_moves').map((m) => m.doc_no.replace(/\d.*$/, '')))
+    for (const k of ['RC', 'MI', 'FD', 'MS', 'AJ', 'SH', 'TR', 'POS', 'SR', 'PR']) expect(kinds.has(k), k).toBe(true)
+  })
+})
+
 describe('缺料建議', () => {
   it('過期或待檢的原料不算可用庫存', () => {
     loginAs('陳業務')

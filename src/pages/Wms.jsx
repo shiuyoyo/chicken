@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { all, get, where } from '../db/store'
 import * as L from '../logic'
 import {
-  Modal, Field, Input, Select, Check, Table, Badge, Tabs, Search, matches, money, qty, dt, itemName, itemUnit, binOptions, itemOptions, attempt, ask, useTab, useOpen, LotLink, DocLink, altText,
-} from '../ui'
+  Modal, Field, Input, Select, Check, Table, Badge, Tabs, Search, matches, money, qty, dt, itemName, itemUnit, binOptions, itemOptions, attempt, ask, useTab, useOpen, LotLink, DocLink, altText, PrintButton } from '../ui'
 
 export default function Wms() {
   const [tab, setTab] = useTab('stock')
@@ -127,6 +126,7 @@ function Transfers() {
         { h: '內容', r: (t) => <span className="small">{t.lines.map((l, i) => <span key={i}>{itemName(l.item_id)}×{l.qty}（<LotLink no={l.lot_no} />） </span>)}</span> },
         { h: '原因', r: (t) => t.reason },
         { h: '人員', r: (t) => t.user_name },
+        { h: '', r: (t) => <PrintButton sm type="transfer" id={t.id} /> },
       ]} />
     </div>
   )
@@ -175,12 +175,13 @@ function StocktakeModal({ st, onClose }) {
       footer={editable ? <>
         <button className="btn" onClick={() => setLines(lines.map((l) => ({ ...l, counted_qty: l.counted_qty ?? l.system_qty })))}>未填的帶入帳面數</button>
         <span style={{ flex: 1 }} />
+        <PrintButton type="stocktake" id={st.id} label="盤點表（空白）" />
         <button className="btn" onClick={() => attempt(() => L.saveCount(st.id, lines), '已暫存')}>暫存</button>
         <button className="btn primary" onClick={async () => {
           if (!(await ask(`送出盤點？共 ${diffs.length} 項差異，金額 ${money(L.sum(diffs, (d) => Math.abs(d.value)))}`))) return
           if (attempt(() => { L.saveCount(st.id, lines); return L.submitStocktake(st.id) }, '盤點已過帳')) onClose()
         }}>送出過帳</button>
-      </> : <button className="btn" onClick={onClose}>關閉</button>}>
+      </> : <><PrintButton type="stocktake" id={st.id} label="盤點表" /><button className="btn" onClick={onClose}>關閉</button></>}>
       <Table rows={lines.map((l, i) => ({ ...l, i }))} columns={[
         { h: '儲位', r: (l) => L.binLabel(l.bin_id) },
         { h: '品項', r: (l) => itemName(l.item_id) },
@@ -238,7 +239,8 @@ function Moves() {
           { h: '品項', r: (m) => itemName(m.item_id) },
           { h: '批號', r: (m) => <LotLink no={m.lot_no} /> },
           { h: '數量', cls: 'num', r: (m) => <span className={m.qty < 0 ? 'tone-bad' : 'tone-ok'}>{m.qty > 0 ? '+' : ''}{qty(m.qty, itemUnit(m.item_id))}</span> },
-          { h: '單據', r: (m) => (m.ref_type && get(m.ref_type, m.ref_id)?.no ? <DocLink t={m.ref_type} id={m.ref_id} /> : m.note) },
+          { h: '單號', r: (m) => (/^(RC|MI|MR|MS|AJ|SC|FD)/.test(m.doc_no || '') ? <PrintButton sm type="doc" id={m.doc_no} label={m.doc_no} /> : m.doc_no) },
+          { h: '來源', r: (m) => (m.ref_type && get(m.ref_type, m.ref_id)?.no ? <DocLink t={m.ref_type} id={m.ref_id} /> : m.note) },
           { h: '人員', r: (m) => m.user_name },
         ]} />
       </div>

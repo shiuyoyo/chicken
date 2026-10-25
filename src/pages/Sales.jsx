@@ -4,8 +4,7 @@ import { all, get, where, transaction } from '../db/store'
 import * as L from '../logic'
 import {
   Modal, Field, Input, Select, LineEditor, Table, Badge, PendingBadge, Search, Tabs, matches, money, qty, itemName, itemUnit, partyName, partyOptions,
-  DocLink, LotLink, attempt, ask, toast, useOpen, useTab,
-} from '../ui'
+  DocLink, LotLink, attempt, ask, toast, useOpen, useTab, PrintButton } from '../ui'
 
 const soBadge = (so) => (so.status === 'pending' ? <PendingBadge /> : so.status === 'rejected' ? <Badge kind="bad">核准退回</Badge> : null)
 
@@ -128,6 +127,7 @@ function OrderActions({ id, onClose, onEdit, nav }) {
         {L.can('sales', 2) && ['confirmed', 'pending', 'rejected'].includes(so.status) && <button className="btn danger" onClick={cancel}>取消訂單</button>}
         <span style={{ flex: 1 }} />
         {L.can('sales', 2) && ['confirmed', 'pending', 'rejected'].includes(so.status) && <button className="btn" onClick={() => onEdit(so)}>編輯</button>}
+        <PrintButton type="sales_order" id={id} />
         <button className="btn primary" onClick={() => nav('/progress/' + id)}>看完整進度</button>
       </>}>
       <div className="stack">
@@ -194,6 +194,7 @@ export function Returns() {
           { h: '原因', r: (r) => <span className="small">{r.reason}</span> },
           { h: '金額（含稅）', cls: 'num', r: (r) => money(r.amount + r.tax) },
           { h: '狀態', r: (r) => (r.status === 'pending' ? <PendingBadge /> : r.status === 'done' ? <Badge kind="ok">已完成</Badge> : <Badge s={r.status} />) },
+          { h: '', r: (r) => <PrintButton sm type="return" id={r.id} /> },
         ]} />
       </div>
       {form && <SalesReturnForm form={form} setForm={setForm} />}

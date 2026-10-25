@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { all } from '../db/store'
 import * as L from '../logic'
-import { Table, Badge, qty, dt, itemName, itemUnit, partyName, DocLink, LotLink, money } from '../ui'
+import { Table, Badge, qty, dt, itemName, itemUnit, partyName, DocLink, LotLink, money, PrintButton } from '../ui'
 
 export default function Trace() {
   const [sp, setSp] = useSearchParams()
@@ -40,6 +40,8 @@ function TraceResult({ t }) {
       <div className="card card-pad">
         <div className="row">
           <h2>{lot.lot_no}</h2>
+          <PrintButton sm type="trace" id={lot.lot_no} label="追溯報告" />
+          <PrintButton sm type="label" id={lot.lot_no} label="標籤" params={{ copies: 4 }} />
           <Badge kind={lot.kind === 'raw' ? '' : 'primary'}>{lot.kind === 'raw' ? '原料批號' : '成品批號'}</Badge>
           <b>{item?.name}</b>
           <Badge s={lot.qc_status}>{lot.qc_status === 'pending' ? '待檢' : undefined}</Badge>

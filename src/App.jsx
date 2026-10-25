@@ -23,6 +23,9 @@ import Admin from './pages/Admin'
 import Developer from './pages/Developer'
 import SystemMap from './pages/SystemMap'
 import Notify from './pages/Notify'
+import Requisitions from './pages/Requisitions'
+import Forms from './print/Forms'
+import PrintView from './print/PrintView'
 import Pos from './pos/Pos'
 import Simple from './simple/Simple'
 
@@ -44,6 +47,7 @@ const NAV = [
     ['/returns', '↩️', '退貨', 'sales', Returns],
   ]],
   ['採購', [
+    ['/requisitions', '📋', '請購單', ['purchase', 'wms', 'production'], Requisitions],
     ['/purchase', '🛒', '採購單', 'purchase', PurchaseOrders],
     ['/receiving', '📥', '進貨', ['purchase', 'wms'], Receiving],
     ['/suppliers', '🚚', '供應商', 'purchase', Suppliers],
@@ -71,6 +75,7 @@ const NAV = [
     ['/items', '🥩', '品項與配方', 'master', Items],
     ['/admin', '👥', '使用者與權限', 'admin', Admin],
     ['/notify', '💬', 'LINE 通知', 'admin', Notify],
+    ['/forms', '🖨️', '表單列印', null, Forms],
     ['/map', '🗺️', '系統關聯圖', null, SystemMap],
     ['/dev', '🛠️', '開發者', 'dev', Developer],
   ]],
@@ -194,6 +199,7 @@ export default function App() {
         <Routes>
           <Route path="/simple/*" element={<Simple />} />
           <Route path="/pos" element={<Gate mod="pos"><Pos /></Gate>} />
+          <Route path="/print/:type/:id" element={<PrintView />} />
           <Route path="/*" element={<Shell />} />
         </Routes>
       )}

@@ -151,6 +151,19 @@ export function allocate(itemId, qty, opt = {}) {
   return out
 }
 
+// 庫存單據號碼（進貨單 RC、領料單 MI、退料單 MR、生產入庫單 MS、調整單 AJ…）
+// 同一次動作的多筆異動共用一個單號，對應鼎新 ERP 的「單據」，可以單獨查詢與列印
+export const DOC_TYPES = {
+  RC: '進貨單', MI: '領料單', FD: '投料單', MR: '退料單', MS: '生產入庫單', AJ: '庫存調整單', SC: '報廢單',
+  TR: '調撥單', SH: '出貨單', SR: '銷退單', PR: '進退單', POS: '門市銷售',
+}
+export function nextDocNo(prefix, date = today()) {
+  const head = `${prefix}${String(date).slice(0, 10).replace(/-/g, '')}-`
+  let max = 0
+  for (const m of all('stock_moves')) if (m.doc_no?.startsWith(head)) max = Math.max(max, Number(m.doc_no.slice(head.length)) || 0)
+  return head + String(max + 1).padStart(3, '0')
+}
+
 // 寫一筆庫存異動（出庫時檢查不能變負）
 export function move(m) {
   const qty = round(m.qty, 3)
@@ -182,8 +195,8 @@ export function transfer({ from_bin_id, to_bin_id, lines, reason = '', date = to
     const doc = insert('transfers', { no: nextNo('transfers', 'TR', date), date, from_bin_id, to_bin_id, lines: alloc, reason, user_name: userName() })
     for (const a of alloc) {
       const c = lotCost(a.lot_no, a.item_id)
-      move({ ...a, bin_id: from_bin_id, qty: -a.qty, type: 'transfer', unit_cost: c, ref_type: 'transfers', ref_id: doc.id, note: doc.no, doc_date: date })
-      move({ ...a, bin_id: to_bin_id, qty: a.qty, type: 'transfer', unit_cost: c, ref_type: 'transfers', ref_id: doc.id, note: doc.no, doc_date: date })
+      move({ ...a, bin_id: from_bin_id, qty: -a.qty, type: 'transfer', unit_cost: c, ref_type: 'transfers', ref_id: doc.id, note: doc.no, doc_date: date, doc_no: doc.no })
+      move({ ...a, bin_id: to_bin_id, qty: a.qty, type: 'transfer', unit_cost: c, ref_type: 'transfers', ref_id: doc.id, note: doc.no, doc_date: date, doc_no: doc.no })
     }
     return doc
   })
@@ -195,7 +208,7 @@ const invAccount = (itemId) => (get('items', itemId)?.type === 'product' ? 1310 
 function doAdjust({ item_id, lot_no, bin_id, qty, reason, date = today(), ref_type = 'adjust', ref_id }) {
   assertOpen(date)
   const c = lotCost(lot_no, item_id)
-  move({ item_id, lot_no, bin_id, qty, type: 'adjust', unit_cost: c, ref_type, ref_id, note: reason, doc_date: date })
+  move({ item_id, lot_no, bin_id, qty, type: 'adjust', unit_cost: c, ref_type, ref_id, note: reason, doc_date: date, doc_no: nextDocNo('AJ', date) })
   const v = round(Math.abs(qty) * c)
   const item = get('items', item_id)
   postJournal({
@@ -240,9 +253,10 @@ export function scrapLot(lotNo, reason = '報廢') {
     if (!lot) fail('找不到批號')
     const rows = stockRows({ lot_no: lotNo }).filter((r) => r.qty > 0)
     if (!rows.length) fail('這個批號已沒有庫存')
+    const docNo = nextDocNo('SC')
     for (const r of rows) {
       const c = lotCost(lotNo, r.item_id)
-      move({ ...r, qty: -r.qty, type: 'scrap', unit_cost: c, ref_type: 'lots', ref_id: lot.id, note: reason })
+      move({ ...r, qty: -r.qty, type: 'scrap', unit_cost: c, ref_type: 'lots', ref_id: lot.id, note: reason, doc_no: docNo })
       postJournal({ memo: `報廢 ${lotNo} ${get('items', r.item_id)?.name} ${r.qty}（${reason}）`, lines: [{ account: 5200, debit: r.qty * c }, { account: invAccount(r.item_id), credit: r.qty * c }], ref_type: 'lots', ref_id: lot.id })
     }
     update('lots', lot.id, { qc_status: lot.qc_status === 'pass' ? 'hold' : lot.qc_status, note: `${lot.note || ''} 已報廢：${reason}`.trim() })

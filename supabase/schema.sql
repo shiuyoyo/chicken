@@ -361,12 +361,33 @@ alter table public.sales_orders enable row level security;
 drop policy if exists "sales_orders_all" on public.sales_orders;
 create policy "sales_orders_all" on public.sales_orders for all using (true) with check (true);
 
+-- 請購單
+create table if not exists public.requisitions (
+  id text primary key,
+  no text,
+  date date,
+  need_date date,
+  requester_id text,
+  status text,
+  lines jsonb,
+  reason text,
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists requisitions_requester_id_idx on public.requisitions (requester_id);
+alter table public.requisitions enable row level security;
+-- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。
+drop policy if exists "requisitions_all" on public.requisitions;
+create policy "requisitions_all" on public.requisitions for all using (true) with check (true);
+
 -- 採購單
 create table if not exists public.purchase_orders (
   id text primary key,
   no text,
   supplier_id text,
   sales_order_id text,
+  requisition_id text,
   date date,
   due_date date,
   status text,
@@ -379,6 +400,7 @@ create table if not exists public.purchase_orders (
 );
 create index if not exists purchase_orders_supplier_id_idx on public.purchase_orders (supplier_id);
 create index if not exists purchase_orders_sales_order_id_idx on public.purchase_orders (sales_order_id);
+create index if not exists purchase_orders_requisition_id_idx on public.purchase_orders (requisition_id);
 alter table public.purchase_orders enable row level security;
 -- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。
 drop policy if exists "purchase_orders_all" on public.purchase_orders;
@@ -445,6 +467,7 @@ create table if not exists public.stock_moves (
   id text primary key,
   date timestamptz,
   doc_date date,
+  doc_no text,
   item_id text,
   lot_no text,
   bin_id text,
@@ -680,6 +703,7 @@ create table if not exists public.bills (
   paid numeric,
   credited numeric,
   status text,
+  receipt_no text,
   note text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

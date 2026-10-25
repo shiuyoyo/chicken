@@ -457,3 +457,14 @@ export function CrudPage({ title, rows, fields, columns, defaults = {}, onSave, 
 }
 
 export { findBy }
+
+// 列印按鈕：開啟列印頁（同一個分頁，列印頁有「返回」）
+export function PrintButton({ type, id, label = '列印', sm, params }) {
+  if (!id) return null
+  const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+  return (
+    <Link className={'btn' + (sm ? ' sm' : '')} to={`/print/${type}/${encodeURIComponent(id)}${qs}`} onClick={(e) => e.stopPropagation()} title={`列印${label === '列印' ? '' : label}`}>
+      🖨 {label}
+    </Link>
+  )
+}

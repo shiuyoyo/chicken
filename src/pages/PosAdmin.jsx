@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, get, where } from '../db/store'
 import * as L from '../logic'
-import { Modal, Table, Badge, Tabs, Kpi, money, qty, dt, itemName, partyName, attempt, ask, useTab, CrudPage, LotLink } from '../ui'
+import { Modal, Table, Badge, Tabs, Kpi, money, qty, dt, itemName, partyName, attempt, ask, useTab, CrudPage, LotLink, PrintButton } from '../ui'
 
 export function PosSales() {
   const [tab, setTab] = useTab('shifts')
@@ -38,6 +38,7 @@ export function PosSales() {
             { h: '折扣', cls: 'num', r: (s) => (s.discount ? money(s.discount) : '') },
             { h: '金額', cls: 'num', r: (s) => money(s.total) },
             { h: '收銀', r: (s) => s.cashier },
+            { h: '', r: (s) => <PrintButton sm type="pos_receipt" id={s.id} label="收據" /> },
             { h: '狀態', r: (s) => (s.status === 'void' ? <Badge kind="bad">作廢</Badge> : L.pendingFor(s.id) ? <Badge kind="warn">作廢待核准</Badge> : <Badge kind="ok">完成</Badge>) },
           ]} />
         </div>

@@ -3,14 +3,15 @@
 import { all, get, where, insert, update, nextNo, nowISO, transaction } from '../db/store'
 import { fail, need, round, sum, today, addDays, userName, getSetting, postJournal, assertOpen } from './core'
 import { notify } from './notify'
-import { allocate, move, nextDocNo, stockOf, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind } from './inventory'
+import { allocate, move, nextDocNo, stockOf, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind, invAccount } from './inventory'
+import { rollupCost, ITEM_TYPES } from './bom'
 
 export const WO_STATUS = {
   planned: '待領料', issued: '已領料', cooking: '烹煮中', done: '待 QC', qc_pass: 'QC 合格', qc_fail: 'QC 不合格', closed: '已結案', cancelled: '已取消',
 }
 
-// 標準成本：配方 × 最近進價
-export const bomCost = (productId) => round(sum(get('items', productId)?.bom || [], (b) => b.qty * lastCost(b.item_id)), 4)
+// 標準成本：多階 BOM 展開到外購料 × 最近進價
+export const bomCost = (productId) => rollupCost(productId, lastCost)
 
 export const woNeeds = (wo) => (get('items', wo.product_id)?.bom || []).map((b) => ({ item_id: b.item_id, qty: round(b.qty * wo.plan_qty, 3) }))
 
@@ -46,8 +47,8 @@ export function createWorkOrder({ sales_order_id, product_id, plan_qty, plan_dat
     const so = get('sales_orders', sales_order_id)
     if (sales_order_id && so?.status !== 'confirmed') fail(`訂單 ${so?.no} 狀態不是「已確認」，不能開工單（可能還在等核准）`)
     const p = get('items', product_id)
-    if (p?.type !== 'product') fail('請選擇成品')
-    if (!p.bom?.length) fail(`${p.name} 還沒有設定配方`)
+    if (!['product', 'semi'].includes(p?.type)) fail('請選擇成品或半成品')
+    if (!p.bom?.length) fail(`${p.name} 還沒有設定 BOM（配方 / 組成）`)
     if (!(Number(plan_qty) > 0)) fail('請輸入計畫數量')
     line ||= getSetting('lines')?.[0]?.name || ''
     const wo = insert('work_orders', {
@@ -90,24 +91,26 @@ export function issueMaterials(woId, lines, { date = today() } = {}) {
     const before = Object.fromEntries(valid.map((l) => [l.item_id, stockOf(l.item_id, date)]))
     const line = lineBin()
     const docNo = nextDocNo('MI', date)
-    let value = 0
+    const value = {}
     for (const l of valid) {
       const n = needs.find((x) => x.item_id === l.item_id)
-      if (!n) fail(`${get('items', l.item_id)?.name} 不在這個產品的配方裡`)
+      if (!n) fail(`${get('items', l.item_id)?.name} 不在這個產品的 BOM 裡`)
       const after = woIssued(wo, l.item_id) - woReturned(wo, l.item_id) + Number(l.qty)
       if (after > n.qty * (1 + tol) + 0.0005) fail(`${get('items', l.item_id)?.name} 領料超過配方需求 ${tol * 100}%（需求 ${n.qty}，領了會變 ${round(after, 3)}）`)
       for (const a of allocate(l.item_id, l.qty, { lot_no: l.lot_no || undefined, date })) {
         const c = lotCost(a.lot_no, a.item_id)
-        value += a.qty * c
+        const acc = invAccount(a.item_id)
+        value[acc] = (value[acc] || 0) + a.qty * c
         move({ ...a, qty: -a.qty, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date, doc_no: docNo })
         move({ ...a, bin_id: line, type: 'issue', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no}｜自 ${binOf(a.bin_id)?.code}`, from_bin_id: a.bin_id, doc_date: date, doc_no: docNo })
       }
     }
     update('work_orders', wo.id, { status: wo.status === 'planned' ? 'issued' : wo.status, start_at: wo.start_at || nowISO() })
-    postJournal({ date, memo: `領料 ${wo.no}`, lines: [{ account: 1320, debit: value }, { account: 1300, credit: value }], ref_type: 'work_orders', ref_id: wo.id })
+    const credits = Object.entries(value).map(([account, v]) => ({ account: Number(account), credit: round(v) }))
+    postJournal({ date, memo: `領料 ${wo.no}`, lines: [{ account: 1320, debit: round(sum(credits, (l) => l.credit)) }, ...credits], ref_type: 'work_orders', ref_id: wo.id })
     // 這次領料讓原料跌破安全庫存才通知（已經低於的不重複通知）
     const low = Object.keys(before).map((id) => get('items', id)).filter((i) => i.safety_stock > 0 && before[i.id] >= i.safety_stock && stockOf(i.id, date) < i.safety_stock)
-    if (low.length) notify('low_stock', { title: '原料低於安全庫存', lines: low.map((i) => `${i.name}：剩 ${stockOf(i.id, date)} ${i.unit}（安全量 ${i.safety_stock}）`), link: '/purchase' })
+    if (low.length) notify('low_stock', { title: '物料低於安全庫存', lines: low.map((i) => `${i.name}：剩 ${stockOf(i.id, date)} ${i.unit}（安全量 ${i.safety_stock}）`), link: '/purchase' })
   })
 }
 
@@ -137,7 +140,17 @@ export function feedMaterials(woId, lines, { date = today() } = {}) {
   })
 }
 
-// 產出：成品進成品倉，QC 合格前不能出貨
+// 有效日期：一般 = 製造日 + 保存天數；組裝品（禮盒）= 投入料中最早到期的那一批；不管理效期 = 空白
+export function outputExpiry(item, wo, date) {
+  if (item.exp_rule === 'none') return ''
+  if (item.exp_rule === 'min_component') {
+    const exps = (wo.feeds || []).map((f) => lotByNo(f.lot_no)?.exp_date).filter(Boolean).sort()
+    if (exps.length) return exps[0]
+  }
+  return addDays(date, item.shelf_days || 180)
+}
+
+// 產出：成品 / 半成品入庫；需要 QC 的品項，合格前不能出貨或被下一層領用
 export function recordOutput(woId, { qty, waste = 0, date = today() }) {
   return transaction(() => {
     need('production', 2)
@@ -151,26 +164,28 @@ export function recordOutput(woId, { qty, waste = 0, date = today() }) {
     const outBefore = wo.output_qty || 0
     // 實際成本：投入原料總成本 ÷ 總產出
     const unit_cost = round(fedValue / (outBefore + qty), 4)
-    // 已經 QC 過的批號不再追加，改開子批號
+    const qcNeeded = product.qc_required !== false
+    const lotBase = { kind: product.type === 'semi' ? 'semi' : 'product', item_id: wo.product_id, work_order_id: wo.id, qty, unit_cost, qc_status: qcNeeded ? 'pending' : 'pass', mfg_date: date, exp_date: outputExpiry(product, wo, date) }
+    // 已經 QC 過的批號不再追加，改開子批號（不需 QC 的品項直接累加）
     let lot = lotByNo(wo.lot_no)
-    if (lot && lot.qc_status !== 'pending') {
+    if (lot && qcNeeded && lot.qc_status !== 'pending') {
       const n = woLots(wo).length + 1
-      lot = createLot({ lot_no: `${wo.lot_no}-${n}`, kind: 'product', item_id: wo.product_id, work_order_id: wo.id, qty, unit_cost, qc_status: 'pending', mfg_date: date, exp_date: addDays(date, product.shelf_days || 180) })
+      lot = createLot({ lot_no: `${wo.lot_no}-${n}`, ...lotBase })
     } else if (lot) {
       lot = update('lots', lot.id, { qty: round(lot.qty + qty, 3), unit_cost })
     } else {
-      lot = createLot({ lot_no: wo.lot_no, kind: 'product', item_id: wo.product_id, work_order_id: wo.id, qty, unit_cost, qc_status: 'pending', mfg_date: date, exp_date: addDays(date, product.shelf_days || 180) })
+      lot = createLot({ lot_no: wo.lot_no, ...lotBase })
     }
     // 所有這張工單的成品批號統一成本
     for (const l of woLots(wo)) if (l.unit_cost !== unit_cost) update('lots', l.id, { unit_cost })
     const bin = defaultBin(wo.product_id)
     checkTemp(wo.product_id, bin)
     move({ item_id: wo.product_id, lot_no: lot.lot_no, bin_id: bin, qty, type: 'output', unit_cost, ref_type: 'work_orders', ref_id: wo.id, note: wo.no, doc_date: date, doc_no: nextDocNo('MS', date) })
-    update('work_orders', wo.id, { output_qty: round(outBefore + qty, 3), waste_qty: round((wo.waste_qty || 0) + Number(waste || 0), 3), status: 'done', end_at: nowISO() })
+    update('work_orders', wo.id, { output_qty: round(outBefore + qty, 3), waste_qty: round((wo.waste_qty || 0) + Number(waste || 0), 3), status: qcNeeded ? 'done' : 'qc_pass', end_at: nowISO() })
     // 在製品轉成品：本次轉出 = 累計投料成本 × 本次產出比例
     const value = round(qty * unit_cost)
     postJournal({ date, memo: `產出入庫 ${wo.no} ${product.name} ${qty}${product.unit}`, lines: [{ account: 1310, debit: value }, { account: 1320, credit: value }], ref_type: 'work_orders', ref_id: wo.id })
-    notify('output_pending_qc', { title: '成品等待 QC', lines: [`${product.name} ${qty} ${product.unit}`, `批號 ${lot.lot_no}`, `工單 ${wo.no}`], link: '/qc' })
+    if (qcNeeded) notify('output_pending_qc', { title: `${ITEM_TYPES[product.type]}等待 QC`, lines: [`${product.name} ${qty} ${product.unit}`, `批號 ${lot.lot_no}`, `工單 ${wo.no}`], link: '/qc' })
     return lot
   })
 }
@@ -190,18 +205,20 @@ export function closeWorkOrder(woId, { date = today() } = {}) {
       byLot[k].qty += m.qty
       if (m.from_bin_id) byLot[k].from = m.from_bin_id
     }
-    let back = 0
+    const back = {}
     const docNo = nextDocNo('MR', date)
     for (const r of Object.values(byLot)) {
       const qty = round(Math.min(r.qty, onHand({ item_id: r.item_id, bin_id: line, lot_no: r.lot_no })), 3)
       if (qty <= 0) continue
       const to = r.from && binKind(r.from) === 'storage' ? r.from : defaultBin(r.item_id)
       const c = lotCost(r.lot_no, r.item_id)
-      back += qty * c
+      const acc = invAccount(r.item_id)
+      back[acc] = (back[acc] || 0) + qty * c
       move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: line, qty: -qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date, doc_no: docNo })
       move({ item_id: r.item_id, lot_no: r.lot_no, bin_id: to, qty, type: 'return', unit_cost: c, ref_type: 'work_orders', ref_id: wo.id, note: `${wo.no} 退料`, doc_date: date, doc_no: docNo })
     }
-    if (back) postJournal({ date, memo: `退料 ${wo.no}`, lines: [{ account: 1300, debit: back }, { account: 1320, credit: back }], ref_type: 'work_orders', ref_id: wo.id })
+    const debits = Object.entries(back).map(([account, v]) => ({ account: Number(account), debit: round(v) }))
+    if (debits.length) postJournal({ date, memo: `退料 ${wo.no}`, lines: [...debits, { account: 1320, credit: round(sum(debits, (l) => l.debit)) }], ref_type: 'work_orders', ref_id: wo.id })
     // 在製品剩餘（四捨五入差額）轉生產損耗，讓每張工單的在製品歸零
     const wip = round(sum(where('journal', (j) => j.ref_type === 'work_orders' && j.ref_id === wo.id).flatMap((j) => j.lines.filter((l) => l.account === 1320)), (l) => l.debit - l.credit))
     if (wip) postJournal({ date, memo: `工單結案差額 ${wo.no}`, lines: wip > 0 ? [{ account: 5200, debit: wip }, { account: 1320, credit: wip }] : [{ account: 1320, debit: -wip }, { account: 5200, credit: -wip }], ref_type: 'work_orders', ref_id: wo.id })

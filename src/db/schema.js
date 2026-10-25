@@ -35,13 +35,14 @@ export const SCHEMA = {
 
   // ---------- 主檔 ----------
   items: {
-    label: '品項（原料/包材/成品）',
+    label: '品項（原料/包材零件/半成品/成品）',
     group: '主檔',
     cols: {
       code: 'text', name: 'text', type: 'text', unit: 'text', spec: 'text', barcode: 'text',
       alt_unit: 'text', alt_factor: 'numeric', price: 'numeric', min_price: 'numeric', cost: 'numeric',
       safety_stock: 'numeric', pack_per_box: 'numeric', shelf_days: 'integer', temp_zone: 'text', default_bin_id: 'text',
-      iqc_required: 'boolean', pos_enabled: 'boolean', pos_price: 'numeric', bom: 'jsonb', active: 'boolean',
+      iqc_required: 'boolean', qc_required: 'boolean', qc_template: 'text', exp_rule: 'text',
+      category: 'text', family_code: 'text', variant_attr: 'text', variant_value: 'text', pos_enabled: 'boolean', pos_price: 'numeric', bom: 'jsonb', active: 'boolean',
     },
   },
   warehouses: { label: '倉庫', group: '倉儲', cols: { code: 'text', name: 'text', kind: 'text', temp_zone: 'text', note: 'text' } },
@@ -209,7 +210,7 @@ export const REFS = {
 }
 
 export function schemaSQL() {
-  const out = ['-- 食品工廠 ERP：Supabase / Postgres schema（由 src/db/schema.js 產生）', '']
+  const out = ['-- 工廠 ERP：Supabase / Postgres schema（由 src/db/schema.js 產生）', '']
   for (const [t, def] of Object.entries(SCHEMA)) {
     const cols = Object.entries(def.cols).map(([c, type]) => `  ${c} ${type}`)
     out.push(

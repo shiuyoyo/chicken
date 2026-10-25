@@ -203,7 +203,8 @@ export function transfer({ from_bin_id, to_bin_id, lines, reason = '', date = to
 }
 
 // ---------- 調整 ----------
-const invAccount = (itemId) => (get('items', itemId)?.type === 'product' ? 1310 : 1300)
+// 自製品（成品、半成品）記 1310，外購料（原料、包材、零件）記 1300
+export const invAccount = (itemId) => (['product', 'semi'].includes(get('items', itemId)?.type) ? 1310 : 1300)
 
 function doAdjust({ item_id, lot_no, bin_id, qty, reason, date = today(), ref_type = 'adjust', ref_id }) {
   assertOpen(date)
@@ -327,6 +328,6 @@ export function expiringLots(days = Number(getSetting('expiry_warn_days'))) {
     .sort((a, b) => a.exp_date.localeCompare(b.exp_date))
 }
 
-export const lowStockItems = () => all('items').filter((i) => i.type !== 'product' && i.active !== false && i.safety_stock > 0 && stockOf(i.id) < i.safety_stock)
+export const lowStockItems = () => all('items').filter((i) => ['raw', 'pack'].includes(i.type) && i.active !== false && i.safety_stock > 0 && stockOf(i.id) < i.safety_stock)
 
 export { asSystem }

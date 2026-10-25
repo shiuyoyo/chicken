@@ -1,4 +1,4 @@
--- 食品工廠 ERP：Supabase / Postgres schema（由 src/db/schema.js 產生）
+-- 工廠 ERP：Supabase / Postgres schema（由 src/db/schema.js 產生）
 
 -- 角色與權限
 create table if not exists public.roles (
@@ -135,7 +135,7 @@ alter table public.audit_log enable row level security;
 drop policy if exists "audit_log_all" on public.audit_log;
 create policy "audit_log_all" on public.audit_log for all using (true) with check (true);
 
--- 品項（原料/包材/成品）
+-- 品項（原料/包材零件/半成品/成品）
 create table if not exists public.items (
   id text primary key,
   code text,
@@ -155,6 +155,13 @@ create table if not exists public.items (
   temp_zone text,
   default_bin_id text,
   iqc_required boolean,
+  qc_required boolean,
+  qc_template text,
+  exp_rule text,
+  category text,
+  family_code text,
+  variant_attr text,
+  variant_value text,
   pos_enabled boolean,
   pos_price numeric,
   bom jsonb,

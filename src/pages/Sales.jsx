@@ -68,7 +68,7 @@ export function SalesOrders() {
                 {cust.min_shelf_days ? `要求剩餘效期 ${cust.min_shelf_days} 天` : ''}
               </div>
             )}
-            <LineEditor lines={edit.lines} types={['product']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
+            <LineEditor lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
             {checks.length > 0 && <div className="notice warn">⚠ 這張訂單需要主管核准：{checks.join('；')}</div>}
             <Field label="備註"><textarea className="input" value={edit.note || ''} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
           </div>
@@ -98,16 +98,11 @@ function OrderActions({ id, onClose, onEdit, nav }) {
     const made = Object.entries(bySupplier).map(([supplier_id, lines]) => L.savePurchaseOrder({ supplier_id, sales_order_id: id, date: L.today(), due_date: L.addDays(L.today(), 3), lines, note: `依訂單 ${so.no} 產生` }))
     return `已產生 ${made.length} 張採購單${made.some((p) => p.status === 'pending') ? '（部分需核准）' : ''}`
   }
+  // 多階：半成品 / 組件不夠會先開它們的工單
   const makeWOs = () => {
-    let n = 0
-    for (const l of so.lines) {
-      const left = L.round(l.qty - planned(l.item_id), 3)
-      if (left > 0) {
-        L.createWorkOrder({ sales_order_id: id, product_id: l.item_id, plan_qty: left, plan_date: L.addDays(L.today(), 1) })
-        n++
-      }
-    }
-    return n ? `已開立 ${n} 張工單` : '工單已足夠'
+    const made = L.planWorkOrders(id)
+    const subs = made.filter((w) => !so.lines.some((l) => l.item_id === w.product_id))
+    return made.length ? `已開立 ${made.length} 張工單${subs.length ? `（含 ${subs.length} 張半成品 / 組件工單：${subs.map((w) => get('items', w.product_id)?.name).join('、')}）` : ''}` : '工單已足夠'
   }
   const cancel = async () => {
     const reason = await ask(`取消訂單 ${so.no}？`, { input: true, placeholder: '取消原因', danger: true, confirmText: '取消訂單' })

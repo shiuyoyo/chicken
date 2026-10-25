@@ -54,7 +54,7 @@ export function saveSalesOrder(data, id) {
     if (c.status === '停止往來') fail(`${c.name} 已停止往來，不能下單`)
     const lines = (data.lines || []).filter((l) => l.item_id && Number(l.qty) > 0).map((l) => ({ item_id: l.item_id, qty: Number(l.qty), price: Number(l.price ?? priceFor(c.id, l.item_id)) }))
     if (!lines.length) fail('請至少輸入一項產品')
-    for (const l of lines) if (get('items', l.item_id)?.type !== 'product') fail('訂單只能賣成品')
+    for (const l of lines) if (!['product', 'semi'].includes(get('items', l.item_id)?.type)) fail('訂單只能賣自製的成品或半成品')
     const old = get('sales_orders', id)
     if (old && ['cancelled', 'closed'].includes(old.status)) fail('這張訂單已結束，不能修改')
     if (old) {

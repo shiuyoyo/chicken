@@ -50,21 +50,21 @@ function StockByItem() {
   return (
     <>
       <div className="row">
-        {[['', '全部'], ['raw', '原料'], ['pack', '包材'], ['product', '成品']].map(([k, l]) => (
+        {[['', '全部'], ...Object.entries(L.ITEM_TYPES)].map(([k, l]) => (
           <button key={k} className={'btn sm' + (type === k ? ' primary' : '')} onClick={() => setType(k)}>{l}</button>
         ))}
       </div>
       <div className="card">
         <Table rows={items} onRow={(i) => setOpen(i.id)} columns={[
-          { h: '品項', r: (i) => <><b>{i.name}</b><div className="small muted">{i.code}・{i.temp_zone}</div></> },
+          { h: '品項', r: (i) => <><b>{i.name}</b><div className="small muted">{i.code}{i.temp_zone ? `・${i.temp_zone}` : ''}</div></> },
           { h: '可用（合格）', cls: 'num', r: (i) => { const s = qcSplit(i.id); return <>{qty(s.pass, i.unit)}<div className="small muted">{altText(i.id, s.pass)}</div></> } },
           { h: '待檢 / 不合格', cls: 'num', r: (i) => qty(qcSplit(i.id).other) },
           { h: '已過期', cls: 'num', r: (i) => { const e = qcSplit(i.id).expired; return e ? <span className="tone-bad">{qty(e)}</span> : '0' } },
           { h: '產線上', cls: 'num', r: (i) => qty(L.lineStock(i.id)) },
           { h: '門市', cls: 'num', r: (i) => qty(L.onHand({ item_id: i.id, kinds: ['store'] })) },
           { h: '待處理區', cls: 'num', r: (i) => qty(L.onHand({ item_id: i.id, kinds: ['quarantine'] })) },
-          { h: '安全量', cls: 'num', r: (i) => (i.type === 'product' ? '—' : qty(i.safety_stock)) },
-          { h: '', r: (i) => (i.type !== 'product' && i.safety_stock && L.stockOf(i.id) < i.safety_stock ? <Badge kind="bad">低於安全量</Badge> : null) },
+          { h: '安全量', cls: 'num', r: (i) => (L.isMade(i) ? '—' : qty(i.safety_stock)) },
+          { h: '', r: (i) => (!L.isMade(i) && i.safety_stock && L.stockOf(i.id) < i.safety_stock ? <Badge kind="bad">低於安全量</Badge> : null) },
         ]} />
       </div>
       {open && (

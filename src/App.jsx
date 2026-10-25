@@ -60,7 +60,7 @@ const NAV = [
   ['倉儲物流 WMS', [
     ['/shipping', '📦', '出貨', 'shipping', Shipping],
     ['/wms', '🏬', '倉儲管理', 'wms', Wms],
-    ['/trace', '🔎', '食品追溯', 'trace', Trace],
+    ['/trace', '🔎', '批號追溯', 'trace', Trace],
   ]],
   ['門市 POS', [
     ['/pos', '🛍️', '收銀台', 'pos', null],
@@ -72,7 +72,7 @@ const NAV = [
     ['/reports', '📈', '經營報表', ['accounting', 'sales'], Reports],
   ]],
   ['系統', [
-    ['/items', '🥩', '品項與配方', 'master', Items],
+    ['/items', '📦', '品項與 BOM', 'master', Items],
     ['/admin', '👥', '使用者與權限', 'admin', Admin],
     ['/notify', '💬', 'LINE 通知', 'admin', Notify],
     ['/forms', '🖨️', '表單列印', null, Forms],
@@ -104,7 +104,7 @@ function Shell() {
         <div className="brand">
           <div className="brand-logo">🐔</div>
           <div>
-            食品工廠 ERP
+            工廠 ERP
             <div className="small muted">{me.name}｜{roleOf(me)?.name}</div>
           </div>
         </div>

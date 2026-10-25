@@ -68,7 +68,7 @@ async function noBadToast() {
 // 本機儲存會延遲約 150ms 合併寫入，讀之前稍等
 const db = async () => {
   await page.waitForTimeout(400)
-  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v4')))
+  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v5')))
 }
 const btn = (name, opt = {}) => page.getByRole('button', { name, ...opt })
 const modal = () => page.locator('.modal').last()
@@ -315,7 +315,7 @@ const modal = () => page.locator('.modal').last()
     return `應有現金 ${expected}，點收相符`
   })
 
-  await step('J1', '食品追溯：新成品批號往上追到原料與供應商、往下追到客戶（召回名單）', async () => {
+  await step('J1', '批號追溯：新成品批號往上追到原料與供應商、往下追到客戶（召回名單）', async () => {
     await loginAs('李品管', '6666')
     await go('/trace?lot=' + sanbeiLot)
     await page.locator('.recall').getByText('山海餐酒館').waitFor()
@@ -431,7 +431,7 @@ const modal = () => page.locator('.modal').last()
     await go('/requisitions')
     await btn('＋ 新請購單').click()
     const m = modal()
-    await m.locator('select').first().selectOption({ label: 'R007 醬油（瓶）' })
+    await m.locator('select').first().selectOption({ label: 'R007 醬油（甘味）（瓶）' })
     await m.locator('input[type=number]').first().fill('24')
     await m.locator('input').nth(2).fill('下週大單備料')
     await m.getByRole('button', { name: '送出' }).click()
@@ -473,6 +473,67 @@ const modal = () => page.locator('.modal').last()
     if (n !== 4) throw new Error('標籤張數 ' + n)
     if (!(await page.locator('.pf-label-card svg.qr').count())) throw new Error('標籤沒有 QR Code')
     return { detail: '出貨單含未稅、稅額、含稅合計與客戶簽收欄；製令單、進貨單可開啟；批號標籤一次 4 張含 QR Code', shot: s }
+  })
+
+  await step('O1', '品項：同一款醬油不同口味，一鍵建立變化款料號', async () => {
+    await loginAs('劉廠長', '4444')
+    await go('/items')
+    await page.locator('tr', { hasText: 'R008' }).first().click()
+    await modal().getByRole('tab', { name: /同系列/ }).click()
+    const fam = await modal().locator('table').innerText()
+    if (!fam.includes('甘味') || !fam.includes('薄鹽')) throw new Error('同系列沒有列出兩種口味：' + fam)
+    await modal().getByRole('button', { name: '建立變化款' }).click()
+    await modal().getByPlaceholder('甘味、薄鹽').fill('香菇、昆布')
+    await modal().getByRole('button', { name: '建立' }).click()
+    await toast('已建立 2 個料號')
+    const d = await db()
+    const made = d.items.filter((i) => i.family_code === 'SOY')
+    if (made.length !== 4) throw new Error('系列料號數 ' + made.length)
+    const s = await shot('variants')
+    return { detail: `醬油系列共 ${made.length} 個料號：${made.map((i) => `${i.code} ${i.variant_value}`).join('、')}，各自有庫存與成本`, shot: s }
+  })
+
+  await step('O2', '多階 BOM：禮盒（成品當零件）展開到每一層原料', async () => {
+    await go('/items')
+    await page.locator('tr', { hasText: 'G001' }).first().click()
+    await modal().getByRole('tab', { name: '多階展開' }).click()
+    await modal().locator('input[type=number]').first().fill('10')
+    const t = await modal().locator('table').first().innerText()
+    if (!/F001[\s\S]*R001[\s\S]*6 kg/.test(t)) throw new Error('沒有展開到第二層：' + t.slice(0, 200))
+    const s = await shot('bom-tree')
+    await modal().getByRole('tab', { name: 'BOM 組成（4）' }).click()
+    return { detail: '10 盒禮盒 → 20 包三杯雞 → 6 kg 雞腿肉，並列出每層可用庫存與外購料彙總', shot: s }
+  })
+
+  await step('O3', '多階工單：禮盒訂單自動先開不夠的調理包工單；半成品批號往下追到成品', async () => {
+    const d = await db()
+    const gift = d.items.find((i) => i.code === 'G001')
+    const so = d.sales_orders.find((o) => o.lines.some((l) => l.item_id === gift.id))
+    const wos = d.work_orders.filter((w) => w.sales_order_id === so.id)
+    const sub = wos.filter((w) => w.product_id !== gift.id)
+    if (!sub.length) throw new Error('沒有半成品 / 組件工單')
+    await go('/production')
+    const lot = d.lots.find((l) => l.kind === 'semi')
+    await go('/trace?lot=' + lot.lot_no)
+    const txt = await page.locator('.trace-flow').innerText()
+    if (!txt.includes('麻辣雞丁調理包')) throw new Error('半成品沒有追到成品')
+    const s = await shot('trace-semi')
+    const names = sub.map((w) => d.items.find((i) => i.id === w.product_id).name)
+    return { detail: `訂單 ${so.no} 禮盒 30 盒：自動開了 ${names.join('、')} 工單（比禮盒早一天）；麻辣醬汁批號 ${lot.lot_no} 往下追到麻辣雞丁調理包`, shot: s }
+  })
+
+  await step('O4', '檢驗範本：品管主管新增「電子組裝」範本', async () => {
+    await loginAs('李品管', '6666')
+    await go('/qc?tab=templates')
+    await page.getByPlaceholder('新範本名稱，例如：電子組裝').fill('電子組裝')
+    await btn('＋ 新增範本').click()
+    await btn('儲存範本').click()
+    await toast('檢驗範本已儲存')
+    const d = await db()
+    const t = d.settings.find((x) => x.key === 'qc_templates')?.value
+    if (!t?.['電子組裝'] || !t['組裝成品']) throw new Error('範本沒有儲存')
+    const s = await shot('qc-templates')
+    return { detail: `共 ${Object.keys(t).length} 套範本：${Object.keys(t).join('、')}；品項可指定用哪一套`, shot: s }
   })
 
   await browser.close()

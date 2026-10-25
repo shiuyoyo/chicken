@@ -22,7 +22,7 @@ export function savePurchaseOrder(data, id) {
     if (!data.supplier_id) fail('請選擇供應商')
     const lines = (data.lines || []).filter((l) => l.item_id && Number(l.qty) > 0).map((l) => ({ ...l, qty: Number(l.qty), price: Number(l.price || 0), received: l.received || 0 }))
     if (!lines.length) fail('請至少輸入一項')
-    for (const l of lines) if (get('items', l.item_id)?.type === 'product') fail('採購單只能買原料或包材')
+    for (const l of lines) if (['product', 'semi'].includes(get('items', l.item_id)?.type)) fail('採購單只能買原料、包材或零件')
     const old = get('purchase_orders', id)
     if (old && ['received', 'closed', 'cancelled'].includes(poStatus(old))) fail('這張採購單已結束，不能修改')
     if (old) for (const l of old.lines) if ((l.received || 0) > 0 && !lines.find((x) => x.item_id === l.item_id && x.qty >= l.received)) fail('已到貨的品項不能刪除或改成少於已收量')
@@ -87,7 +87,7 @@ export function receiveGoods({ supplier_id, purchase_order_id, lines, note = '',
     let amount = 0
     for (const l of valid) {
       const item = get('items', l.item_id)
-      if (item?.type === 'product') fail('成品不能用進貨入庫')
+      if (['product', 'semi'].includes(item?.type)) fail('自製品（成品、半成品）不能用進貨入庫')
       const poLine = po?.lines.find((x) => x.item_id === l.item_id)
       if (po && !poLine) fail(`${item.name} 不在採購單 ${po.no} 內`)
       if (poLine) {
@@ -184,7 +184,7 @@ export function saveRequisition(data, id) {
     needAny(['purchase', 'wms', 'production'], 2)
     const lines = (data.lines || []).filter((l) => l.item_id && Number(l.qty) > 0).map((l) => ({ item_id: l.item_id, qty: Number(l.qty), note: l.note || '', purchase_order_id: l.purchase_order_id || '' }))
     if (!lines.length) fail('請至少輸入一項要請購的原料或包材')
-    for (const l of lines) if (get('items', l.item_id)?.type === 'product') fail('請購單只能請購原料或包材')
+    for (const l of lines) if (['product', 'semi'].includes(get('items', l.item_id)?.type)) fail('請購單只能請購原料、包材或零件')
     const old = get('requisitions', id)
     if (old && reqStatus(old) !== 'open') fail('已經轉採購的請購單不能修改')
     const row = { ...data, lines }
@@ -240,7 +240,7 @@ export function convertRequisition(id, supplierByItem = {}) {
 // 依安全庫存產生請購單（可用 + 已訂未到 < 安全量的原料包材）
 export function lowStockRequisition() {
   const lines = all('items')
-    .filter((i) => i.type !== 'product' && i.active !== false && i.safety_stock > 0)
+    .filter((i) => ['raw', 'pack'].includes(i.type) && i.active !== false && i.safety_stock > 0)
     .map((i) => ({ item: i, short: round(i.safety_stock * 1.5 - stockOf(i.id) - openPOQty(i.id), 3) }))
     .filter((x) => stockOf(x.item.id) + openPOQty(x.item.id) < x.item.safety_stock && x.short > 0)
     .map((x) => ({ item_id: x.item.id, qty: Math.ceil(x.short), note: `可用 ${stockOf(x.item.id)}，安全量 ${x.item.safety_stock}` }))

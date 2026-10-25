@@ -14,7 +14,7 @@ export default function Trace() {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1 className="grow">食品追溯</h1>
+        <h1 className="grow">批號追溯</h1>
       </div>
       <form className="row" onSubmit={(e) => { e.preventDefault(); go(input.trim()) }}>
         <input id="trace-lot" className="input" style={{ maxWidth: 320 }} placeholder="輸入批號，例如 L20261006-001 或 R…" value={input} onChange={(e) => setInput(e.target.value)} list="lot-list" aria-label="批號" />
@@ -23,7 +23,7 @@ export default function Trace() {
       </form>
       {!lotNo && (
         <div className="card card-pad stack">
-          <p style={{ margin: 0 }}>輸入任何批號：成品批號會往上找出用了哪些原料批號、哪家供應商；原料批號會往下找出做成哪些成品、出貨給哪些客戶、門市賣給哪些會員，可直接當作召回名單。</p>
+          <p style={{ margin: 0 }}>輸入任何批號：成品 / 半成品批號會往上一層一層找出用了哪些批號（半成品再往上追到原料）、哪家供應商；原料或零件批號會往下找出做成哪些半成品、成品、禮盒，出貨給哪些客戶、門市賣給哪些會員，可直接當作召回名單。</p>
           <div className="row small">最近批號：{recent.map((l) => <button key={l.id} className="btn sm" onClick={() => { setInput(l.lot_no); go(l.lot_no) }}>{l.lot_no}</button>)}</div>
         </div>
       )}
@@ -42,10 +42,10 @@ function TraceResult({ t }) {
           <h2>{lot.lot_no}</h2>
           <PrintButton sm type="trace" id={lot.lot_no} label="追溯報告" />
           <PrintButton sm type="label" id={lot.lot_no} label="標籤" params={{ copies: 4 }} />
-          <Badge kind={lot.kind === 'raw' ? '' : 'primary'}>{lot.kind === 'raw' ? '原料批號' : '成品批號'}</Badge>
+          <Badge kind={lot.kind === 'raw' ? '' : 'primary'}>{lot.kind === 'raw' ? `${L.ITEM_TYPES[item?.type] || '原料'}批號` : `${L.ITEM_TYPES[item?.type] || '成品'}批號`}</Badge>
           <b>{item?.name}</b>
           <Badge s={lot.qc_status}>{lot.qc_status === 'pending' ? '待檢' : undefined}</Badge>
-          <span className="muted">數量 {qty(lot.qty, item?.unit)}・製造 / 進貨 {lot.mfg_date}・效期 {lot.exp_date}{L.isExpired(lot) ? '（已過期）' : ''}</span>
+          <span className="muted">數量 {qty(lot.qty, item?.unit)}・製造 / 進貨 {lot.mfg_date}・效期 {lot.exp_date || '不管理'}{L.isExpired(lot) ? '（已過期）' : ''}</span>
         </div>
       </div>
 
@@ -63,13 +63,13 @@ function TraceResult({ t }) {
             ) : (
               <>
                 <div className="small">工單 <DocLink t="work_orders" row={t.wo} />・訂單 {t.so ? <DocLink t="sales_orders" row={t.so} /> : '備貨'}・產線 {t.wo?.line}</div>
-                <Table empty="沒有投料紀錄" rows={t.materials} columns={[
-                  { h: '原料', r: (m) => itemName(m.item_id) },
-                  { h: '原料批號', r: (m) => <LotLink no={m.lot_no} /> },
+                <Table empty="沒有投料紀錄" rows={L.flattenTrace(t.materials)} columns={[
+                  { h: '用料', r: (m) => <span style={{ paddingLeft: m.level * 16 }}>{m.level > 0 && '└ '}{itemName(m.item_id)}{m.children.length > 0 && <> <Badge kind="info">{L.ITEM_TYPES[L.lotByNo(m.lot_no)?.kind === 'semi' ? 'semi' : 'product']}</Badge></>}</span> },
+                  { h: '批號', r: (m) => <LotLink no={m.lot_no} /> },
                   { h: '用量', cls: 'num', r: (m) => qty(m.qty, itemUnit(m.item_id)) },
                   { h: '供應商', r: (m) => m.supplier?.name || '—' },
                   { h: '廠商批號', r: (m) => m.lot?.supplier_lot || '—' },
-                  { h: 'IQC', r: (m) => <Badge s={m.lot?.qc_status} /> },
+                  { h: 'QC', r: (m) => <Badge s={m.lot?.qc_status} /> },
                 ]} />
               </>
             )}
@@ -87,14 +87,14 @@ function TraceResult({ t }) {
         <div className="card">
           <div className="card-head"><h3>⬇ 下游去向</h3></div>
           <div className="card-pad stack">
-            {t.kind === 'raw' && (
+            {(t.kind === 'raw' || t.allUsing.length > 0) && (
               <>
-                <h3>用在哪些成品批號</h3>
-                <Table empty="還沒有被使用" rows={t.products} columns={[
-                  { h: '成品批號', r: (p) => <LotLink no={p.lot.lot_no} /> },
+                <h3>用在哪些批號（含多階）</h3>
+                <Table empty="還沒有被使用" rows={t.allUsing} columns={[
+                  { h: '批號', r: (p) => <span style={{ paddingLeft: p.level * 16 }}>{p.level > 0 && '└ '}<LotLink no={p.lot.lot_no} /></span> },
                   { h: '產品', r: (p) => itemName(p.lot.item_id) },
                   { h: '工單', r: (p) => <DocLink t="work_orders" row={p.wo} /> },
-                  { h: '投入量', cls: 'num', r: (p) => qty(p.qty, item?.unit) },
+                  { h: '投入量', cls: 'num', r: (p) => (p.level ? <span className="muted small">間接</span> : qty(p.qty, item?.unit)) },
                 ]} />
               </>
             )}
@@ -118,7 +118,7 @@ function TraceResult({ t }) {
       </div>
 
       <div className="card recall">
-        <div className="card-head"><h3 className="grow">🚨 召回名單</h3><span className="small muted">如果這個批號有食安問題，需要通知的對象</span></div>
+        <div className="card-head"><h3 className="grow">🚨 召回名單</h3><span className="small muted">如果這個批號有品質或食安問題，需要通知的對象（含用到它的下游批號）</span></div>
         <Table empty="尚未流到客戶手上" rows={t.recall.map((r, i) => ({ id: i, ...r }))} columns={[
           { h: '客戶 / 會員', r: (r) => (r.customer ? <DocLink t="customers" row={r.customer} /> : '門市非會員（無法聯絡）') },
           { h: '聯絡', r: (r) => r.customer ? `${r.customer.contact || ''} ${r.customer.phone || ''}` : '' },

@@ -1,32 +1,50 @@
-// 食品追溯：任一批號往上追原料與供應商，往下追成品、出貨客戶、門市銷售，產出召回名單。
+// 批號追溯（多階）：任一批號往上追到每一層用料與供應商，往下追到用到它的半成品、成品、禮盒，
+// 再到出貨客戶、門市銷售，產出召回名單。
 import { get, where } from '../db/store'
 import { round, sum } from './core'
 import { lotByNo, stockRows } from './inventory'
 
 const feedsOfWO = (wo) => wo?.feeds || []
+const MAX_DEPTH = 10
 
-// 原料批號用到哪些成品批號
-function productLotsUsing(rawLotNo) {
-  const wos = where('work_orders', (w) => feedsOfWO(w).some((f) => f.lot_no === rawLotNo))
-  return wos.flatMap((w) => where('lots', (l) => l.work_order_id === w.id).map((l) => ({ lot: l, wo: w, qty: round(sum(feedsOfWO(w).filter((f) => f.lot_no === rawLotNo), (f) => f.qty), 3) })))
+// 直接用到這個批號的下一層批號
+function lotsUsing(lotNo) {
+  const wos = where('work_orders', (w) => feedsOfWO(w).some((f) => f.lot_no === lotNo))
+  return wos.flatMap((w) => where('lots', (l) => l.work_order_id === w.id).map((l) => ({ lot: l, wo: w, qty: round(sum(feedsOfWO(w).filter((f) => f.lot_no === lotNo), (f) => f.qty), 3) })))
 }
 
-// 成品批號的原料來源
-function materialsOf(productLot) {
-  const wo = get('work_orders', productLot.work_order_id)
+// 往下：用到它的批號，每一層再往下展開（children）
+function usedInTree(lotNo, depth = 0, seen = new Set([lotNo])) {
+  if (depth >= MAX_DEPTH) return []
+  return lotsUsing(lotNo)
+    .filter((u) => !seen.has(u.lot.lot_no))
+    .map((u) => {
+      seen.add(u.lot.lot_no)
+      return { ...u, level: depth, children: usedInTree(u.lot.lot_no, depth + 1, seen) }
+    })
+}
+
+// 往上：這個批號投入了哪些批號；自製的料再往上展開（children）
+function materialsTree(lot, depth = 0) {
+  const wo = get('work_orders', lot?.work_order_id)
   const by = {}
   for (const f of feedsOfWO(wo)) {
     by[f.lot_no] ||= { lot_no: f.lot_no, item_id: f.item_id, qty: 0 }
     by[f.lot_no].qty = round(by[f.lot_no].qty + f.qty, 3)
   }
   return Object.values(by).map((m) => {
-    const lot = lotByNo(m.lot_no)
-    return { ...m, lot, supplier: get('suppliers', lot?.supplier_id), po: get('purchase_orders', lot?.purchase_order_id) }
+    const l = lotByNo(m.lot_no)
+    return {
+      ...m, lot: l, level: depth, supplier: get('suppliers', l?.supplier_id), po: get('purchase_orders', l?.purchase_order_id),
+      children: l?.work_order_id && depth < MAX_DEPTH ? materialsTree(l, depth + 1) : [],
+    }
   })
 }
 
-function downstreamOf(productLotNos) {
-  const set = new Set(productLotNos)
+export const flattenTrace = (nodes) => nodes.flatMap((n) => [n, ...flattenTrace(n.children || [])])
+
+function downstreamOf(lotNos) {
+  const set = new Set(lotNos)
   const shipments = where('shipments', (s) => s.lines.some((l) => set.has(l.lot_no))).flatMap((s) =>
     s.lines.filter((l) => set.has(l.lot_no)).map((l) => ({ shipment: s, customer: get('customers', s.customer_id), lot_no: l.lot_no, item_id: l.item_id, qty: l.qty })),
   )
@@ -52,17 +70,22 @@ export function traceLot(lotNo) {
   const item = get('items', lot.item_id)
   const qc = where('qc_inspections', (q) => q.lot_no === lot.lot_no)
   const moves = where('stock_moves', (m) => m.lot_no === lot.lot_no).sort((a, b) => String(a.date).localeCompare(String(b.date)))
+  // products：直接用到它的批號（含多階 children）；allUsing：所有下游批號
+  const products = usedInTree(lot.lot_no)
+  const allUsing = flattenTrace(products)
+  const base = { lot, item, qc, moves, products, allUsing }
   if (lot.kind === 'raw') {
-    const products = productLotsUsing(lot.lot_no)
     return {
-      lot, item, qc, moves, kind: 'raw',
+      ...base, kind: 'raw',
       supplier: get('suppliers', lot.supplier_id),
       po: get('purchase_orders', lot.purchase_order_id),
-      products,
-      ...downstreamOf(products.map((p) => p.lot.lot_no)),
+      ...downstreamOf(allUsing.map((p) => p.lot.lot_no)),
       rawOnHand: stockRows({ lot_no: lot.lot_no }),
     }
   }
   const wo = get('work_orders', lot.work_order_id)
-  return { lot, item, qc, moves, kind: 'product', wo, so: get('sales_orders', wo?.sales_order_id), materials: materialsOf(lot), ...downstreamOf([lot.lot_no]) }
+  const materials = materialsTree(lot)
+  // 最上游的外購料批號（含供應商），召回時通知供應商用
+  const sources = flattenTrace(materials).filter((m) => !m.children.length)
+  return { ...base, kind: 'product', wo, so: get('sales_orders', wo?.sales_order_id), materials, sources, ...downstreamOf([lot.lot_no, ...allUsing.map((p) => p.lot.lot_no)]) }
 }

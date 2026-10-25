@@ -58,7 +58,7 @@ export function Production() {
                   setCreate({ ...create, sales_order_id: v, product_id: so?.lines[0]?.item_id || create.product_id, plan_qty: so?.lines[0]?.qty || create.plan_qty })
                 }} />
             </Field>
-            <Field label="產品"><Select value={create.product_id} options={itemOptions(['product'])} onChange={(v) => setCreate({ ...create, product_id: v })} /></Field>
+            <Field label="產品（成品 / 半成品）"><Select value={create.product_id} options={itemOptions(['product', 'semi'])} onChange={(v) => setCreate({ ...create, product_id: v })} /></Field>
             <Field label="計畫數量"><Input type="number" value={create.plan_qty} onChange={(v) => setCreate({ ...create, plan_qty: v })} /></Field>
             <Field label="生產日"><Input type="date" value={create.plan_date} onChange={(v) => setCreate({ ...create, plan_date: v })} /></Field>
             <Field label="產線"><Select placeholder={false} value={create.line} options={lineOptions()} onChange={(v) => setCreate({ ...create, line: v })} /></Field>
@@ -119,7 +119,7 @@ function WorkOrderModal({ id, onClose }) {
           <p className="muted small" style={{ margin: 0 }}>
             {tab === 'issue'
               ? `從倉庫把原料領到產線。系統依「先到期先出」自動挑批號，也可以指定批號。只能領 QC 合格、未過期的料，最多可超過配方 ${L.getSetting('issue_tolerance') * 100}%。`
-              : '把產線上的原料放進鍋裡，系統記錄用了哪些原料批號（食品追溯用）。產線上不夠時會自動從倉庫補領。'}
+              : '把產線上的料投入生產（下鍋、上組裝線），系統記錄用了哪些批號（追溯用）。產線上不夠時會自動從倉庫補領。'}
           </p>
           <Table rows={needs} columns={[
             { h: '原料', r: (n) => itemName(n.item_id) },
@@ -146,7 +146,7 @@ function WorkOrderModal({ id, onClose }) {
       )}
       {tab === 'output' && (
         <div className="stack">
-          <p className="muted small" style={{ margin: 0 }}>煮好包裝後登記產出。成品進「{L.binLabel(product?.default_bin_id)}」，狀態為待 QC，合格後才能出貨或送門市。</p>
+          <p className="muted small" style={{ margin: 0 }}>做好後登記產出。{L.ITEM_TYPES[product?.type]}進「{L.binLabel(product?.default_bin_id)}」，{product?.qc_required === false ? '這個品項免 QC，產出直接可用。' : '狀態為待 QC，合格後才能出貨、送門市或給下一層使用。'}</p>
           {canEdit && (
             <>
               <div className="form-grid">
@@ -158,7 +158,7 @@ function WorkOrderModal({ id, onClose }) {
               </div>
             </>
           )}
-          <h3>成品批號</h3>
+          <h3>產出批號</h3>
           <Table empty="還沒有產出" rows={L.woLots(wo)} columns={[
             { h: '批號', r: (l) => <LotLink no={l.lot_no} /> },
             { h: '數量', cls: 'num', r: (l) => qty(l.qty) },

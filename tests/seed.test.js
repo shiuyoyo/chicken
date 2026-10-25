@@ -5,7 +5,7 @@ import * as L from '../src/logic'
 describe('示範資料', () => {
   beforeAll(freshDemo)
   it('可以完整建立', () => {
-    expect(all('items').length).toBe(12)
+    expect(all('items').length).toBe(20)
     expect(all('lots').length).toBeGreaterThan(5)
   })
   it('沒有負庫存、傳票平衡', () => {

@@ -2,6 +2,7 @@
 import { all, get, where, insert, update, remove, setPref, currentUser, transaction } from '../db/store'
 import { fail, need, can, MODULES, LEVELS } from './core'
 import { checkTemp } from './inventory'
+import { ITEM_TYPES, findCycle } from './bom'
 
 // ---------- 登入 ----------
 const tries = {}
@@ -79,17 +80,24 @@ function validate(table, d, id) {
     if (d.barcode && dup('barcode')) fail(`條碼 ${d.barcode} 重複`)
     if (!d.unit) fail('請輸入單位')
     if (d.alt_unit && !(Number(d.alt_factor) > 0)) fail('請輸入換算數量（1 個包裝單位 = 幾個基本單位）')
-    if (d.type === 'product') {
-      if (!(Number(d.price) > 0)) fail('成品請設定售價')
-      if (d.min_price && Number(d.min_price) > Number(d.price)) fail('最低售價不能高於售價')
-      for (const b of d.bom || []) {
+    if (!ITEM_TYPES[d.type]) fail('請選擇品項類型')
+    if (d.type === 'product' && !(Number(d.price) > 0)) fail('成品請設定售價')
+    if (d.min_price && Number(d.min_price) > Number(d.price)) fail('最低售價不能高於售價')
+    if (d.pos_enabled && !['product', 'semi'].includes(d.type)) fail('只有自製的成品或半成品可以在門市販售')
+    if (d.bom?.length) {
+      if (!['product', 'semi'].includes(d.type)) fail('只有成品或半成品可以設定 BOM（配方 / 組成）')
+      for (const b of d.bom) {
         const m = get('items', b.item_id)
-        if (!m) fail('配方有不存在的原料')
-        if (m.type === 'product') fail('配方只能用原料或包材')
-        if (!(Number(b.qty) > 0)) fail(`配方 ${m.name} 用量要大於 0`)
+        if (!m) fail('BOM 有不存在的品項')
+        if (id && b.item_id === id) fail('BOM 不能用到自己')
+        if (!(Number(b.qty) > 0)) fail(`BOM ${m.name} 用量要大於 0`)
       }
-      if (new Set((d.bom || []).map((b) => b.item_id)).size !== (d.bom || []).length) fail('配方有重複的原料')
-    } else if (d.pos_enabled) fail('只有成品可以在門市販售')
+      if (new Set(d.bom.map((b) => b.item_id)).size !== d.bom.length) fail('BOM 有重複的品項')
+      const cyc = id && findCycle(id, d.bom)
+      if (cyc) fail(`BOM 形成迴圈：${cyc.map((x) => get('items', x)?.name).join(' → ')}`)
+    }
+    if (d.variant_value && d.family_code && where('items', (i) => i.family_code === d.family_code && i.variant_value === d.variant_value && i.id !== id).length)
+      fail(`同系列已經有「${d.variant_value}」的料號`)
     if (d.default_bin_id) checkTemp(id || '__new', d.default_bin_id, d)
   }
   if (table === 'suppliers' || table === 'warehouses') {

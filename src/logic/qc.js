@@ -3,22 +3,13 @@ import { all, get, where, insert, update, nextNo, transaction } from '../db/stor
 import { fail, need, can, today, userName, requestApproval, registerApproval, isSystem } from './core'
 import { notify } from './notify'
 import { lotByNo } from './inventory'
+import { QC_TEMPLATE_DEFAULTS, checksFor, ITEM_TYPES } from './bom'
 
-export const DEFAULT_CHECKS = [
-  { name: '外觀 / 色澤', standard: '色澤均勻、無異物' },
-  { name: '氣味', standard: '無異味' },
-  { name: '中心溫度', standard: '≥ 75°C' },
-  { name: '重量', standard: '標示重量 ±3%' },
-  { name: '包裝密封', standard: '無漏氣、無破損' },
-  { name: '標示', standard: '品名、批號、效期正確' },
-]
-export const IQC_CHECKS = [
-  { name: '到貨溫度', standard: '冷凍 ≤ -15°C / 冷藏 ≤ 7°C' },
-  { name: '外觀 / 氣味', standard: '無異味、無變色' },
-  { name: '包裝完整', standard: '無破損、無污染' },
-  { name: '標示與效期', standard: '有效期限 ≥ 2/3' },
-  { name: '檢驗報告', standard: '供應商附藥檢 / 微生物報告' },
-]
+// 檢驗項目改由範本決定（設定 → 檢驗範本，品項可指定用哪一套），這兩個保留給舊程式相容
+export const DEFAULT_CHECKS = QC_TEMPLATE_DEFAULTS['食品成品']
+export const IQC_CHECKS = QC_TEMPLATE_DEFAULTS['食品進料']
+// 某批號該用哪些檢驗項目
+export const checksForLot = (lot) => checksFor(get('items', lot?.item_id), lot?.kind === 'raw' ? 'IQC' : 'FQC')
 export const QC_STATUS = { pending: '待檢', pass: '合格', fail: '不合格', hold: '暫扣' }
 
 function applyResult(lot, result) {
@@ -53,7 +44,7 @@ export function saveInspection(data) {
       const item = get('items', lot.item_id)
       notify('qc_failed', {
         title: `QC 不合格：${item?.name}`,
-        lines: [`批號 ${lot.lot_no}（${kind === 'IQC' ? '進料' : '成品'}）`, `數量 ${lot.qty} ${item?.unit || ''}`, data.note && `說明：${data.note}`, '已管制，不能使用或出貨'],
+        lines: [`批號 ${lot.lot_no}（${kind === 'IQC' ? '進料' : ITEM_TYPES[item?.type] || '成品'}）`, `數量 ${lot.qty} ${item?.unit || ''}`, data.note && `說明：${data.note}`, '已管制，不能使用或出貨'],
         link: `/trace?lot=${lot.lot_no}`,
       })
     }

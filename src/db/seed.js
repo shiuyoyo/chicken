@@ -1,4 +1,4 @@
-// 示範資料：一間做雞肉調理包的食品工廠（含工廠直營門市）。
+// 示範資料：一間做雞肉調理包的工廠（含工廠直營門市）。示範多階 BOM（醬汁半成品、禮盒組裝）與變化款料號。
 // 全部用正式的業務邏輯跑出來，所以庫存、批號、帳務、簽核都彼此一致。
 import { insert, update, clearAll, setPref, all, get, where, findBy, nowISO } from './store'
 import * as L from '../logic'
@@ -85,9 +85,15 @@ export async function seedDemo() {
   const sesame = it('R004', '黑麻油', 'raw', '瓶', 180, { safety_stock: 20, spec: '500ml' })
   const ginger = it('R005', '老薑', 'raw', 'kg', 90, { safety_stock: 20, temp_zone: '冷藏', default_bin_id: B['C-A01'], shelf_days: 21 })
   const basil = it('R006', '九層塔', 'raw', 'kg', 150, { safety_stock: 5, temp_zone: '冷藏', default_bin_id: B['C-A02'], shelf_days: 7 })
-  const soy = it('R007', '醬油', 'raw', '瓶', 60, { safety_stock: 20 })
+  // 同一種醬油不同口味 → 不同料號（同一個系列 family_code）
+  const soy = it('R007', '醬油（甘味）', 'raw', '瓶', 60, { safety_stock: 20, category: '調味料', family_code: 'SOY', variant_attr: '口味', variant_value: '甘味' })
+  const soyLite = it('R008', '醬油（薄鹽）', 'raw', '瓶', 65, { safety_stock: 6, category: '調味料', family_code: 'SOY', variant_attr: '口味', variant_value: '薄鹽' })
+  const pepper = it('R009', '花椒', 'raw', 'kg', 400, { category: '調味料', shelf_days: 365 })
+  const chili = it('R010', '乾辣椒', 'raw', 'kg', 200, { category: '調味料', shelf_days: 365 })
   const bag = it('P001', '真空調理袋', 'pack', '個', 3, { safety_stock: 2000, default_bin_id: B['N-B01'], alt_unit: '捆', alt_factor: 500, shelf_days: 1000 })
   const box = it('P002', '外箱（20入）', 'pack', '個', 15, { safety_stock: 200, default_bin_id: B['N-B01'], shelf_days: 1000 })
+  const giftCase = it('P003', '禮盒紙盒', 'pack', '個', 35, { category: '禮盒零件', default_bin_id: B['N-B01'], shelf_days: 0 })
+  const giftBag = it('P004', '禮盒提袋', 'pack', '個', 8, { category: '禮盒零件', default_bin_id: B['N-B01'], shelf_days: 0 })
   const bom = (rows) => rows.map(([item, qty]) => ({ item_id: item.id, qty }))
   const prod = { type: 'product', temp_zone: '冷凍', default_bin_id: B['P-A01'], alt_unit: '箱', pos_enabled: true }
   const sanbei = it('F001', '三杯雞調理包', 'product', '包', 70, {
@@ -102,6 +108,23 @@ export async function seedDemo() {
     ...prod, price: 65, min_price: 55, pos_price: 79, pack_per_box: 40, alt_factor: 40, shelf_days: 180, spec: '150g/包 冷凍', barcode: '4710000000035', default_bin_id: B['P-A02'],
     bom: bom([[breast, 0.17], [bag, 1], [box, 0.025]]),
   })
+
+  // 半成品：麻辣醬汁先做一大鍋，再給調理包用（不需要成品抽檢）
+  const sauce = it('S001', '麻辣醬汁', 'semi', 'kg', 0, {
+    category: '醬汁', temp_zone: '冷藏', default_bin_id: B['C-A02'], shelf_days: 30, qc_required: false, spec: '半成品・冷藏',
+    bom: bom([[soyLite, 0.5], [sesame, 0.2], [pepper, 0.05], [chili, 0.1]]),
+  })
+  const mala = it('F004', '麻辣雞丁調理包', 'product', '包', 0, {
+    ...prod, category: '調理包', price: 140, min_price: 120, pos_price: 169, pack_per_box: 20, alt_factor: 20, shelf_days: 365, spec: '450g/包 冷凍', barcode: '4710000000042',
+    bom: bom([[leg, 0.3], [sauce, 0.08], [bag, 1], [box, 0.05]]),
+  })
+  // 組裝品：禮盒用成品當零件，效期取裡面最早到期的那一包
+  const gift = it('G001', '中秋團圓禮盒', 'product', '盒', 0, {
+    ...prod, category: '禮盒', price: 699, min_price: 599, pos_price: 799, alt_unit: '', alt_factor: 0, shelf_days: 0, spec: '三杯雞 ×2、麻油雞 ×2、紙盒、提袋',
+    default_bin_id: B['P-A02'], exp_rule: 'min_component', qc_template: '組裝成品', barcode: '4710000000059',
+    bom: bom([[sanbei, 2], [mayou, 2], [giftCase, 1], [giftBag, 1]]),
+  })
+  for (const p of [sanbei, mayou, shred]) update('items', p.id, { category: '調理包' })
 
   // ---------- 供應商 / 價格表 / 客戶 ----------
   const su = (code, name, contact, phone, terms_days, certs) => insert('suppliers', { code, name, contact, phone, terms_days, certs, rating: 'A', address: '', tax_id: '', note: '' })
@@ -149,14 +172,14 @@ export async function seedDemo() {
   const fqc = (lotNo, ok = true) =>
     as('李品管', () => L.saveInspection({ lot_no: lotNo, sample_size: 5, defect_qty: ok ? 0 : 2, result: ok ? 'pass' : 'fail', checks: L.DEFAULT_CHECKS.map((c, i) => ({ ...c, value: i === 2 ? '82°C' : '', pass: ok || i !== 0 })) }))
   const produce = (so, product, qty, date, { output = true, qc = true, extra = 4 } = {}) => {
-    const wo = as('劉廠長', () => L.createWorkOrder({ sales_order_id: so?.id, product_id: product.id, plan_qty: qty, plan_date: date, line: product === mayou ? '一號蒸煮鍋' : '二號炒鍋' }))
+    const wo = as('劉廠長', () => L.createWorkOrder({ sales_order_id: so?.id, product_id: product.id, plan_qty: qty, plan_date: date, line: product === mayou || product === sauce ? '一號蒸煮鍋' : '二號炒鍋' }))
     as('張師傅', () => {
       L.issueMaterials(wo.id, L.woNeeds(wo), { date })
       L.feedMaterials(wo.id, L.woNeeds(wo), { date })
     })
     if (!output) return wo
     const lot = as('張師傅', () => L.recordOutput(wo.id, { qty: qty + extra, waste: 1.5, date }))
-    if (qc) fqc(lot.lot_no)
+    if (qc && lot.qc_status === 'pending') fqc(lot.lot_no)
     return get('work_orders', wo.id)
   }
 
@@ -185,6 +208,19 @@ export async function seedDemo() {
   const so3 = as('黃經理', () => L.saveSalesOrder({ customer_id: c2.id, date: d(0), due_date: d(10), lines: [{ item_id: shred.id, qty: 400, price: 65 }] }))
   as('吳採購', () => L.savePurchaseOrder({ supplier_id: s1.id, sales_order_id: so3.id, date: d(0), due_date: d(2), lines: [{ item_id: breast.id, qty: 70, price: 120 }] }))
   as('劉廠長', () => L.createWorkOrder({ sales_order_id: so3.id, product_id: shred.id, plan_qty: 400, plan_date: d(3), line: '包裝線' }))
+
+  // ---------- 多階：麻辣醬汁（半成品）→ 麻辣雞丁調理包 ----------
+  const spicePO = as('吳採購', () => L.savePurchaseOrder({ supplier_id: s2.id, date: d(-7), lines: [{ item_id: soyLite.id, qty: 24, price: 65 }, { item_id: pepper.id, qty: 3, price: 400 }, { item_id: chili.id, qty: 5, price: 200 }] }))
+  as('張師傅', () => receiveAll(spicePO, d(-6)))
+  const giftPO = as('吳採購', () => L.savePurchaseOrder({ supplier_id: s3.id, date: d(-7), lines: [{ item_id: giftCase.id, qty: 60, price: 35 }, { item_id: giftBag.id, qty: 60, price: 8 }] }))
+  as('張師傅', () => receiveAll(giftPO, d(-6)))
+  const woSauce = produce(null, sauce, 20, d(-4), { extra: 0 })
+  as('劉廠長', () => L.closeWorkOrder(woSauce.id, { date: d(-4) }))
+  const woMala = produce(null, mala, 60, d(-3), { extra: 0 })
+  as('劉廠長', () => L.closeWorkOrder(woMala.id, { date: d(-3) }))
+  // 禮盒訂單：依訂單開工單會自動開出不夠的三杯雞（半成品 / 組件）工單，再開禮盒工單
+  const so4 = as('陳業務', () => L.saveSalesOrder({ customer_id: c1.id, date: d(0), due_date: d(12), lines: [{ item_id: gift.id, qty: 30, price: 650 }], note: '中秋禮盒，附賀卡' }))
+  as('劉廠長', () => L.planWorkOrders(so4.id))
 
   // ---------- 待簽核示範 ----------
   // 便當店信用額度只有 2 萬，再下大單會卡簽核

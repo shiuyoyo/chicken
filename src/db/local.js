@@ -1,5 +1,5 @@
 // 本機儲存：整份資料存在瀏覽器 localStorage（每台裝置各自一份）。
-const KEY = 'food-erp:data:v4'
+const KEY = 'food-erp:data:v5'
 
 export function localBackend() {
   let pending = false

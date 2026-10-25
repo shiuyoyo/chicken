@@ -194,7 +194,7 @@ function ReceiveFlow() {
   const p = get('purchase_orders', po)
   const rows = p
     ? p.lines.filter((l) => l.qty > (l.received || 0)).map((l) => ({ id: l.item_id, hint: `訂 ${qty(l.qty)}，已收 ${qty(l.received || 0)}，還差 ${qty(L.round(l.qty - (l.received || 0), 3))}` }))
-    : all('items').filter((i) => i.type !== 'product' && i.active !== false).map((i) => ({ id: i.id, hint: `可用庫存 ${qty(L.stockOf(i.id))}` }))
+    : all('items').filter((i) => ['raw', 'pack'].includes(i.type) && i.active !== false).map((i) => ({ id: i.id, hint: `可用庫存 ${qty(L.stockOf(i.id))}` }))
   const any = Object.values(counts).some((v) => v > 0)
   return (
     <>
@@ -364,12 +364,12 @@ function QCFlow() {
         <Top title="品管：選批號" />
         <div className="simple-body">
           {lots.length === 0 && <div className="hint" style={{ fontSize: 18 }}>沒有待檢批號 👍</div>}
-          {lots.map((l) => <Pick key={l.id} title={`${itemName(l.item_id)}　${qty(l.qty, itemUnit(l.item_id))}`} sub={`${l.kind === 'raw' ? '進料' : '成品'}｜批號 ${l.lot_no}｜${l.kind === 'raw' ? partyName('suppliers', l.supplier_id) : '製造 ' + l.mfg_date}`} onClick={() => setLotId(l.id)} />)}
+          {lots.map((l) => <Pick key={l.id} title={`${itemName(l.item_id)}　${qty(l.qty, itemUnit(l.item_id))}`} sub={`${l.kind === 'raw' ? '進料' : L.ITEM_TYPES[get('items', l.item_id)?.type] || '成品'}｜批號 ${l.lot_no}｜${l.kind === 'raw' ? partyName('suppliers', l.supplier_id) : '製造 ' + l.mfg_date}`} onClick={() => setLotId(l.id)} />)}
         </div>
       </>
     )
   const lot = get('lots', lotId)
-  const checks = lot.kind === 'raw' ? L.IQC_CHECKS : L.DEFAULT_CHECKS
+  const checks = L.checksForLot(lot)
   const judge = (result) => {
     const r = attempt(() => L.saveInspection({ lot_no: lot.lot_no, sample_size: lot.kind === 'raw' ? 3 : 5, defect_qty: result === 'pass' ? 0 : 1, checks: checks.map((c) => ({ ...c, value: '', pass: result === 'pass' })), result, note: '簡易模式判定' }))
     if (r) setDone(r.pending ? '已送主管核准' : result === 'pass' ? '判定合格' : '判定不合格，已管制')

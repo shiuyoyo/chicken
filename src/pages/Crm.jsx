@@ -455,7 +455,7 @@ export function Quotations() {
               <Field label="報價日"><Input type="date" value={edit.date} onChange={(v) => setEdit({ ...edit, date: v })} /></Field>
               <Field label="有效至"><Input type="date" value={edit.valid_until} onChange={(v) => setEdit({ ...edit, valid_until: v })} /></Field>
             </div>
-            <LineEditor lines={edit.lines} types={['product']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
+            <LineEditor lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
             <Field label="備註（付款、運送條件）"><textarea className="input" value={edit.note || ''} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
           </div>
         </Modal>
@@ -502,7 +502,7 @@ export function PriceLists() {
             <Field label="名稱"><Input value={edit.name} onChange={(v) => setEdit({ ...edit, name: v })} /></Field>
             {edit.lines.map((l, i) => (
               <div key={i} className="row" style={{ flexWrap: 'nowrap' }}>
-                <div style={{ flex: 2 }}><Select value={l.item_id} options={itemOptions(['product'])} onChange={(v) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, item_id: v } : x)) })} /></div>
+                <div style={{ flex: 2 }}><Select value={l.item_id} options={itemOptions(['product', 'semi'])} onChange={(v) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, item_id: v } : x)) })} /></div>
                 <div style={{ flex: 1 }}><Input type="number" value={l.price} onChange={(v) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, price: v } : x)) })} /></div>
                 <button className="btn sm ghost danger" aria-label="移除" onClick={() => setEdit({ ...edit, lines: edit.lines.filter((_, j) => j !== i) })}>✕</button>
               </div>

@@ -25,7 +25,7 @@ export default function Login() {
           <div className="brand-logo">🐔</div>
           <div>
             <h1 style={{ fontSize: 20 }}>{getSetting('company_name')}</h1>
-            <div className="muted small">食品工廠 ERP・請選擇你的名字並輸入 PIN</div>
+            <div className="muted small">工廠 ERP・請選擇你的名字並輸入 PIN</div>
           </div>
         </div>
         {!u ? (

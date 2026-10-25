@@ -189,10 +189,10 @@ export const FORMS = {
       const so = get('sales_orders', w.sales_order_id)
       return {
         title: '製令單', no: w.no, date: w.plan_date,
-        meta: [['產品', `${p.code} ${p.name}`], ['規格', p.spec], ['預計產量', `${num(w.plan_qty)} ${p.unit}`], ['成品批號', w.lot_no], ['產線', w.line], ['訂單 / 客戶', so ? `${so.no} ${cust(so.customer_id).name}` : '備貨生產'], ['狀態', L.WO_STATUS[w.status]]],
+        meta: [['產品', `${p.code} ${p.name}`], ['規格', p.spec], ['預計產量', `${num(w.plan_qty)} ${p.unit}`], ['產出批號', w.lot_no], ['產線', w.line], ['訂單 / 客戶', so ? `${so.no} ${cust(so.customer_id).name}` : '備貨生產'], ['狀態', L.WO_STATUS[w.status]]],
         columns: [...itemCols(), { h: '單位用量', cls: 'num', r: (n) => num((p.bom || []).find((b) => b.item_id === n.item_id)?.qty) }, { h: '應領量', cls: 'num', r: (n) => num(n.qty) }, { h: '單位', r: (n) => item(n.item_id).unit }, { h: '已領', cls: 'num', r: (n) => num(L.woIssued(w, n.item_id) - L.woReturned(w, n.item_id)) }, { h: '投料批號', r: (n) => [...new Set((w.feeds || []).filter((f) => f.item_id === n.item_id).map((f) => f.lot_no))].join('\n') }],
         rows: L.woNeeds(w),
-        extra: { title: '生產紀錄（現場填寫）', rows: [['投料開始時間', ''], ['中心溫度（≥75°C）', ''], ['烹煮完成時間', ''], ['實際產量', w.output_qty ? `${num(w.output_qty)} ${p.unit}` : ''], ['損耗', w.waste_qty ? `${num(w.waste_qty)} kg` : ''], ['異常說明', '']] },
+        extra: { title: '生產紀錄（現場填寫）', rows: [['投料 / 開工時間', ''], p.temp_zone ? ['中心溫度（≥75°C）', ''] : ['製程檢查 / 關鍵管制點', ''], ['完成時間', ''], ['實際產量', w.output_qty ? `${num(w.output_qty)} ${p.unit}` : ''], ['損耗', w.waste_qty ? `${num(w.waste_qty)} ${p.unit}` : ''], ['異常說明', '']] },
         signatures: ['生管', '現場領班', '品管', '廠長'],
       }
     },
@@ -342,27 +342,27 @@ export const FORMS = {
       const i = item(l.item_id)
       return {
         title: i.name, no: l.lot_no, layout: 'label', copies: Math.min(100, Math.max(1, Number(copies) || 1)),
-        meta: [['品號', i.code], ['規格', i.spec], ['批號', l.lot_no], [l.kind === 'raw' ? '進貨日' : '製造日', l.mfg_date], ['有效日期', l.exp_date], ['保存方式', i.temp_zone === '冷凍' ? '冷凍 -18°C 以下' : i.temp_zone === '冷藏' ? '冷藏 0–7°C' : '常溫、避免日照'], ['數量', i.pack_per_box > 1 ? `${i.pack_per_box} ${i.unit} / 箱` : `${num(l.qty)} ${i.unit}`], ['品管', ({ pass: '合格', pending: '待檢', fail: '不合格', hold: '暫扣' })[l.qc_status]]],
+        meta: [['品號', i.code], ['規格', i.spec], ['批號', l.lot_no], [l.kind === 'raw' ? '進貨日' : '製造日', l.mfg_date], ...(l.exp_date ? [['有效日期', l.exp_date]] : []), ...(i.temp_zone ? [['保存方式', i.temp_zone === '冷凍' ? '冷凍 -18°C 以下' : i.temp_zone === '冷藏' ? '冷藏 0–7°C' : '常溫、避免日照']] : []), ['數量', i.pack_per_box > 1 ? `${i.pack_per_box} ${i.unit} / 箱` : `${num(l.qty)} ${i.unit}`], ['品管', ({ pass: '合格', pending: '待檢', fail: '不合格', hold: '暫扣' })[l.qc_status]]],
         qr: `LOT:${l.lot_no}`,
         footer: `${L.getSetting('company_name')}　${L.getSetting('company_phone')}`,
       }
     },
   },
   trace: {
-    label: '食品追溯報告', module: 'trace',
+    label: '批號追溯報告', module: 'trace',
     build: (lotNo) => {
       const t = L.traceLot(lotNo)
       const i = t.item
       const up = t.kind === 'raw'
         ? [{ a: '供應商', b: `${t.supplier?.name || ''}（${t.supplier?.certs || ''}）`, c: `廠商批號 ${t.lot.supplier_lot || ''}`, d: t.po?.no || '直接進貨' }]
-        : t.materials.map((m) => ({ a: item(m.item_id).name, b: m.lot_no, c: `${num(m.qty)} ${item(m.item_id).unit}`, d: `${m.supplier?.name || ''} ${m.lot?.supplier_lot || ''}` }))
+        : L.flattenTrace(t.materials).map((m) => ({ a: `${'　'.repeat(m.level)}${m.level ? '└ ' : ''}${item(m.item_id).name}`, b: m.lot_no, c: `${num(m.qty)} ${item(m.item_id).unit}`, d: `${m.supplier?.name || ''} ${m.lot?.supplier_lot || ''}` }))
       const down = t.recall.map((r) => ({ a: r.customer?.name || '門市非會員', b: [r.customer?.contact, r.customer?.phone].filter(Boolean).join(' '), c: num(r.qty), d: r.docs.join('、') }))
       return {
-        title: '食品追溯報告', no: t.lot.lot_no, date: L.today(),
-        meta: [['品名', `${i.code} ${i.name}`], ['批號類型', t.kind === 'raw' ? '原料' : '成品'], ['批量', `${num(t.lot.qty)} ${i.unit}`], ['製造 / 進貨日', t.lot.mfg_date], ['有效日期', t.lot.exp_date], ['品管', ({ pass: '合格', pending: '待檢', fail: '不合格', hold: '暫扣' })[t.lot.qc_status]]],
+        title: '批號追溯報告', no: t.lot.lot_no, date: L.today(),
+        meta: [['品名', `${i.code} ${i.name}`], ['批號類型', L.ITEM_TYPES[i.type] || (t.kind === 'raw' ? '原料' : '成品')], ['批量', `${num(t.lot.qty)} ${i.unit}`], ['製造 / 進貨日', t.lot.mfg_date], ['有效日期', t.lot.exp_date || '不管理'], ['品管', ({ pass: '合格', pending: '待檢', fail: '不合格', hold: '暫扣' })[t.lot.qc_status]]],
         sections: [
-          { title: t.kind === 'raw' ? '上游來源' : '上游：使用的原料批號與供應商', columns: t.kind === 'raw' ? ['來源', '供應商', '批號', '採購單'] : ['原料', '原料批號', '用量', '供應商 / 廠商批號'], rows: up },
-          ...(t.kind === 'raw' ? [{ title: '用在哪些成品批號', columns: ['成品批號', '產品', '工單', '投入量'], rows: t.products.map((p) => ({ a: p.lot.lot_no, b: item(p.lot.item_id).name, c: p.wo.no, d: `${num(p.qty)} ${i.unit}` })) }] : []),
+          { title: t.kind === 'raw' ? '上游來源' : '上游：使用的批號（多階）與供應商', columns: t.kind === 'raw' ? ['來源', '供應商', '批號', '採購單'] : ['用料', '批號', '用量', '供應商 / 廠商批號'], rows: up },
+          ...(t.allUsing.length ? [{ title: '用在哪些批號（含多階）', columns: ['批號', '產品', '工單', '投入量'], rows: t.allUsing.map((p) => ({ a: `${'　'.repeat(p.level)}${p.level ? '└ ' : ''}${p.lot.lot_no}`, b: item(p.lot.item_id).name, c: p.wo.no, d: p.level ? '間接' : `${num(p.qty)} ${i.unit}` })) }] : []),
           { title: '下游：流向客戶（召回名單）', columns: ['客戶 / 會員', '聯絡方式', '數量', '單據'], rows: down },
           { title: '公司內現存庫存', columns: ['儲位', '品項', '批號', '數量'], rows: [...(t.onHand || []), ...(t.rawOnHand || [])].filter((r) => r.qty > 0).map((r) => ({ a: bin(r.bin_id), b: item(r.item_id).name, c: r.lot_no, d: num(r.qty) })) },
         ],

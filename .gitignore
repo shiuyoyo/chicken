@@ -5,3 +5,4 @@ dist-single
 .env.local
 tests/e2e/out
 supabase/.temp
+deno.lock

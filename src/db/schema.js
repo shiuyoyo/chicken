@@ -16,6 +16,21 @@ export const SCHEMA = {
       payload: 'jsonb', status: 'text', requested_by: 'text', decided_by: 'text', decided_at: 'timestamptz', decision_note: 'text',
     },
   },
+  notify_contacts: {
+    label: '通知綁定（LINE / Telegram）',
+    group: '通知',
+    cols: {
+      channel: 'text', external_id: 'text', display_name: 'text', picture_url: 'text', state: 'text', status: 'text',
+      requested_role_id: 'text', requested_name: 'text', user_id: 'text', muted: 'boolean', approved_by: 'text', approved_at: 'timestamptz', note: 'text',
+    },
+  },
+  notifications: {
+    label: '通知發送紀錄',
+    group: '通知',
+    cols: {
+      event: 'text', title: 'text', body: 'text', link: 'text', user_ids: 'jsonb', contact_ids: 'jsonb', status: 'text', results: 'jsonb', sent_at: 'timestamptz',
+    },
+  },
   audit_log: { label: '操作紀錄', group: '系統', cols: { at: 'timestamptz', user_name: 'text', action: 'text', table_name: 'text', row_id: 'text', summary: 'text' } },
 
   // ---------- 主檔 ----------
@@ -185,7 +200,7 @@ export const REFS = {
   sales_order_id: 'sales_orders', purchase_order_id: 'purchase_orders', work_order_id: 'work_orders', quotation_id: 'quotations',
   opportunity_id: 'opportunities', shipment_id: 'shipments', invoice_id: 'invoices', bill_id: 'bills', warehouse_id: 'warehouses',
   bin_id: 'bins', default_bin_id: 'bins', from_bin_id: 'bins', to_bin_id: 'bins', price_list_id: 'price_lists', owner_id: 'users',
-  user_id: 'users', shift_id: 'pos_shifts',
+  user_id: 'users', shift_id: 'pos_shifts', requested_role_id: 'roles', approved_by: 'users',
 }
 
 export function schemaSQL() {
@@ -202,6 +217,8 @@ export function schemaSQL() {
       `);`,
     )
     for (const c of Object.keys(def.cols)) if (REFS[c]) out.push(`create index if not exists ${t}_${c}_idx on public.${t} (${c});`)
+    if (t === 'notify_contacts') out.push(`create unique index if not exists notify_contacts_channel_ext_idx on public.${t} (channel, external_id);`)
+    if (t === 'notifications') out.push(`create index if not exists notifications_status_idx on public.${t} (status, created_at);`)
     out.push(
       `alter table public.${t} enable row level security;`,
       `-- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。`,

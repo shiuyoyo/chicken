@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { HashRouter, NavLink, Route, Routes, useLocation, useNavigate, Navigate, Link } from 'react-router-dom'
 import { useStore, currentUser } from './db/store'
-import { can, canDecide, pendingApprovals, logout, roleOf, MODULES } from './logic'
+import { can, canDecide, pendingApprovals, pendingContacts, logout, roleOf, MODULES } from './logic'
 import { Toasts, AskHost, NoAccess } from './ui'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -22,6 +22,7 @@ import { PosSales, Members } from './pages/PosAdmin'
 import Admin from './pages/Admin'
 import Developer from './pages/Developer'
 import SystemMap from './pages/SystemMap'
+import Notify from './pages/Notify'
 import Pos from './pos/Pos'
 import Simple from './simple/Simple'
 
@@ -69,6 +70,7 @@ const NAV = [
   ['系統', [
     ['/items', '🥩', '品項與配方', 'master', Items],
     ['/admin', '👥', '使用者與權限', 'admin', Admin],
+    ['/notify', '💬', 'LINE 通知', 'admin', Notify],
     ['/map', '🗺️', '系統關聯圖', null, SystemMap],
     ['/dev', '🛠️', '開發者', 'dev', Developer],
   ]],
@@ -88,6 +90,7 @@ function Shell() {
   const links = NAV.flatMap((g) => g[1])
   const title = links.find(([p]) => (p === '/' ? loc.pathname === '/' : loc.pathname.startsWith(p)))?.[2]
   const myApprovals = pendingApprovals().filter((a) => canDecide(a)).length
+  const pendingBind = can('admin', 2) ? pendingContacts().length : 0
   const home = can('dashboard') ? '/' : links.find(([p, , , m]) => p !== '/' && m && allowed(m))?.[0] || '/approvals'
   return (
     <div className="layout">
@@ -112,6 +115,7 @@ function Shell() {
                     <span aria-hidden="true">{ico}</span>
                     {label}
                     {to === '/approvals' && myApprovals > 0 && <span className="nav-count">{myApprovals}</span>}
+                    {to === '/notify' && pendingBind > 0 && <span className="nav-count">{pendingBind}</span>}
                   </NavLink>
                 ))}
               </div>

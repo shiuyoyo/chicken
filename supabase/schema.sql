@@ -69,6 +69,55 @@ alter table public.approvals enable row level security;
 drop policy if exists "approvals_all" on public.approvals;
 create policy "approvals_all" on public.approvals for all using (true) with check (true);
 
+-- 通知綁定（LINE / Telegram）
+create table if not exists public.notify_contacts (
+  id text primary key,
+  channel text,
+  external_id text,
+  display_name text,
+  picture_url text,
+  state text,
+  status text,
+  requested_role_id text,
+  requested_name text,
+  user_id text,
+  muted boolean,
+  approved_by text,
+  approved_at timestamptz,
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists notify_contacts_requested_role_id_idx on public.notify_contacts (requested_role_id);
+create index if not exists notify_contacts_user_id_idx on public.notify_contacts (user_id);
+create index if not exists notify_contacts_approved_by_idx on public.notify_contacts (approved_by);
+create unique index if not exists notify_contacts_channel_ext_idx on public.notify_contacts (channel, external_id);
+alter table public.notify_contacts enable row level security;
+-- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。
+drop policy if exists "notify_contacts_all" on public.notify_contacts;
+create policy "notify_contacts_all" on public.notify_contacts for all using (true) with check (true);
+
+-- 通知發送紀錄
+create table if not exists public.notifications (
+  id text primary key,
+  event text,
+  title text,
+  body text,
+  link text,
+  user_ids jsonb,
+  contact_ids jsonb,
+  status text,
+  results jsonb,
+  sent_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists notifications_status_idx on public.notifications (status, created_at);
+alter table public.notifications enable row level security;
+-- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。
+drop policy if exists "notifications_all" on public.notifications;
+create policy "notifications_all" on public.notifications for all using (true) with check (true);
+
 -- 操作紀錄
 create table if not exists public.audit_log (
   id text primary key,

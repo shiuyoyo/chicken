@@ -1,6 +1,7 @@
 // 銷售：價格（客戶價格表 / 最低售價）、銷售訂單（信用額度與低價簽核）、報價單轉訂單。
 import { all, get, where, insert, update, nextNo, transaction } from '../db/store'
 import { fail, need, round, sum, today, addDays, taxRate, docTotal, requestApproval, registerApproval, pendingFor, isSystem } from './core'
+import { notify } from './notify'
 
 export const SO_STATUS = { pending: '待核准', confirmed: '已確認', cancelled: '已取消', rejected: '核准退回', closed: '已結案' }
 export const QUOTE_STATUS = { draft: '草稿', sent: '已送出', accepted: '客戶接受', rejected: '客戶拒絕', converted: '已轉訂單', expired: '已過期' }
@@ -72,13 +73,25 @@ export function saveSalesOrder(data, id) {
     if (status === 'pending')
       requestApproval({ type: 'so', module: 'sales', ref_table: 'sales_orders', ref_id: so.id, amount: total, summary: `${so.no} ${c.name}`, reason: reasons.join('；') })
     else if (pendingFor(so.id)) update('approvals', pendingFor(so.id).id, { status: 'superseded' })
+    if (status === 'confirmed' && !old) notifyOrder(so)
     return so
   })
 }
+function notifyOrder(so) {
+  const c = get('customers', so.customer_id)
+  notify('order_created', {
+    ownerId: c?.owner_id,
+    title: `新訂單 ${so.no}`,
+    lines: [`客戶：${c?.name}`, so.lines.map((l) => `${get('items', l.item_id)?.name} × ${l.qty}`).join('、'), `金額：$${Math.round(so.total).toLocaleString()}（未稅）`, `交期：${so.due_date || '—'}`],
+    link: `/progress/${so.id}`,
+  })
+}
+
 registerApproval('so', {
   approve: (ap) => {
     const so = get('sales_orders', ap.ref_id)
     update('sales_orders', so.id, { status: 'confirmed', approved_total: so.total })
+    notifyOrder(so)
   },
   reject: (ap) => update('sales_orders', ap.ref_id, { status: 'rejected' }),
 })

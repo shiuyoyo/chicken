@@ -2,6 +2,7 @@
 // 開班 → 結帳（現金找零 / 刷卡 / 行動支付、會員點數、折扣權限）→ 作廢（主管）→ 日結對帳。
 import { all, get, where, insert, update, nextNo, nowISO, transaction } from '../db/store'
 import { fail, need, can, round, sum, today, userName, getSetting, taxRate, postJournal, assertOpen, nextGui, requestApproval, registerApproval, isSystem } from './core'
+import { notify } from './notify'
 import { allocate, move, binsOfKind, onHand, lotCost, stockRows, lotByNo, isExpired } from './inventory'
 
 export const POS_METHODS = ['現金', '信用卡', 'LINE Pay', '街口支付']
@@ -146,6 +147,12 @@ export function closeShift(id, counted_cash, note = '') {
     const { expected } = shiftSummary(id)
     const diff = round(Number(counted_cash) - expected)
     if (diff) postJournal({ memo: `${sh.no} 現金${diff > 0 ? '溢' : '短'} ${Math.abs(diff)}`, lines: diff > 0 ? [{ account: 1100, debit: diff }, { account: 6950, credit: diff }] : [{ account: 6950, debit: -diff }, { account: 1100, credit: -diff }], ref_type: 'pos_shifts', ref_id: id })
+    const sum0 = shiftSummary(id)
+    notify('pos_closed', {
+      title: `門市日結 ${sh.no}`,
+      lines: [`營業額 $${Math.round(sum0.total).toLocaleString()}（${sum0.count} 筆）`, Object.entries(sum0.byMethod).map(([m, v]) => `${m} $${Math.round(v).toLocaleString()}`).join('、'), diff ? `⚠ 現金${diff > 0 ? '多' : '少'} $${Math.abs(diff)}` : '現金相符', `收銀：${userName()}`],
+      link: '/pos-sales',
+    })
     return update('pos_shifts', id, { status: 'closed', closed_by: userName(), closed_at: nowISO(), expected_cash: expected, counted_cash: Number(counted_cash), diff, note })
   })
 }

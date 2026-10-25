@@ -74,7 +74,7 @@ function persist(t, op, row) {
 }
 
 const writeLog = (action, table, row, summary) => {
-  if (table === 'audit_log') return
+  if (table === 'audit_log' || table === 'notifications') return
   const entry = {
     id: uid(),
     at: nowISO(),

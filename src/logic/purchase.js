@@ -4,6 +4,7 @@ import {
   fail, need, needAny, round, sum, today, addDays, getSetting, taxRate, postJournal, assertOpen, docTotal,
   requestApproval, registerApproval, pendingFor, isSystem,
 } from './core'
+import { notify } from './notify'
 import { createLot, defaultBin, checkTemp, move, lotByNo, onHand, stockOf, binOf } from './inventory'
 
 export const PO_STATUS = { pending: '待核准', open: '未到貨', partial: '部分到貨', received: '已到齊', closed: '已結案', cancelled: '已作廢', rejected: '核准退回' }
@@ -116,6 +117,10 @@ export function receiveGoods({ supplier_id, purchase_order_id, lines, note = '',
       amount, tax, total: round(amount + tax), paid: 0, credited: 0, status: 'unpaid', note: (po ? `採購單 ${po.no} 進貨` : '直接進貨') + (note ? `｜${note}` : ''),
     })
     postJournal({ date, memo: `進貨 ${sup?.name || ''} ${po?.no || ''}`, lines: [{ account: 1300, debit: amount }, { account: 1400, debit: tax }, { account: 2100, credit: amount + tax }], ref_type: 'bills', ref_id: bill.id })
+    const lotText = (l) => `${get('items', l.item_id)?.name} ${l.qty}${get('items', l.item_id)?.unit || ''}（${l.lot_no}）`
+    notify('po_received', { title: `進貨入庫：${sup?.name}`, lines: [po ? `採購單 ${po.no}` : '直接進貨', ...lots.map(lotText)], link: po ? `/purchase?open=${po.id}` : '/receiving' })
+    const waiting = lots.filter((l) => l.qc_status === 'pending')
+    if (waiting.length) notify('iqc_needed', { title: '進料等待檢驗', lines: [...waiting.map(lotText), '檢驗合格前不能領用'], link: '/qc' })
     return { bill, lots }
   })
 }

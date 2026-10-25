@@ -10,7 +10,8 @@
     "preview": "vite preview --host",
     "schema": "node scripts/gen-schema.mjs",
     "test": "vitest run",
-    "e2e": "node tests/e2e/acceptance.cjs"
+    "e2e": "node tests/e2e/acceptance.cjs",
+    "test:functions": "cd supabase/functions && deno test tests/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

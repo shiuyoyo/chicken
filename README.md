@@ -18,6 +18,7 @@ ERP、CRM、WMS、POS、品管、會計共用同一套資料，任何一張單�
 | **會計** | 應收、應付、帳齡、收付款、費用、手動傳票、損益表、試算表、月結關帳 | 所有進出貨、生產、門市、退貨自動產生傳票 |
 | **食品追溯** | 任一批號往上追原料與供應商，往下追客戶與門市會員，產出召回名單 | 串起採購、生產、出貨、POS |
 | **訂單進度** | 接單 → 原料進貨 → 領料 → 投料 → 產出 → QC → 出貨 → 收款，每階段數量與完整歷程 | 彙整所有關聯單據 |
+| **LINE / Telegram 通知** | 員工加入官方帳號自己選職位，管理員在後台確定後，相關資料異動自動推播（簽核、訂單、進貨、工單、QC、出貨、收款、低庫存、日結、關帳）；可設定每種事件通知哪些職位；網頁上有模擬器可以試用 | 通知在每個業務動作的同一個交易中產生；設定方式見 [docs/line-setup.md](docs/line-setup.md) |
 | **權限與簽核** | PIN 登入、角色權限矩陣（無 / 檢視 / 編輯 / 核准）、簽核中心、操作紀錄 | 套用在所有系統；申請人不能核准自己的申請 |
 | **開發者** | 資料表瀏覽、外鍵完整性與帳務健康檢查、備份還原、Supabase 設定與建表 SQL | — |
 
@@ -60,6 +61,7 @@ npm run build        # 產生 dist/
 npm run build:single # 單一 HTML 檔 dist-single/index.html
 npm run schema       # 由 src/db/schema.js 重新產生 supabase/schema.sql
 npm run e2e          # 驗收測試（需先 npm run build && npm run preview）
+npm run test:functions # Edge Functions 測試（需要 Deno）
 ```
 
 ## 資料庫
@@ -86,4 +88,5 @@ src/pages/          標準模式各頁
 src/simple/         大按鈕模式
 src/pos/            門市收銀台
 tests/              業務規則測試、驗收測試（tests/e2e）
+supabase/functions/ LINE / Telegram webhook 與通知發送（Supabase Edge Functions）
 ```

@@ -362,6 +362,70 @@ const modal = () => page.locator('.modal').last()
     return { shot: await shot('reports'), detail: '依產品、客戶、通路、月份的銷售額與毛利' }
   })
 
+  await step('M1', 'LINE：新員工加入官方帳號，自己選職位、輸入姓名', async () => {
+    await go('/notify?tab=sim')
+    await btn('＋ LINE 新員工').click()
+    await modal().locator('textarea').fill('小陳')
+    await modal().getByRole('button', { name: '確定' }).click()
+    const phone = page.locator('.phone')
+    await phone.getByText('請選擇你在公司的職位').waitFor()
+    await phone.locator('.chat-quick').getByRole('button', { name: '現場人員' }).click()
+    await phone.getByText('請輸入你的姓名').waitFor()
+    await page.locator('#sim-text').fill('陳小明')
+    await phone.getByRole('button', { name: '送出' }).click()
+    await phone.getByText('已送出申請').waitFor()
+    return { detail: '加好友 → 按「現場人員」→ 輸入「陳小明」→ 送出申請，等管理員確認', shot: await shot('line-register') }
+  })
+
+  await step('M2', 'LINE：管理員在後台確定職位，建立員工帳號', async () => {
+    await go('/notify?tab=pending')
+    const card = page.locator('.card', { hasText: '陳小明' })
+    await card.getByRole('button', { name: '確定職位' }).click()
+    await modal().getByText('這個職位會收到').waitFor()
+    const s = await shot('line-approve')
+    await modal().getByRole('button', { name: '確定' }).click()
+    await page.getByText('綁定完成').waitFor()
+    const msg = await modal().innerText()
+    const pin = msg.match(/PIN：(\d{4})/)?.[1]
+    await modal().getByRole('button', { name: '知道了' }).click()
+    const d = await db()
+    const c = d.notify_contacts.find((x) => x.requested_name === '陳小明')
+    const u = d.users.find((x) => x.id === c.user_id)
+    if (c.status !== 'approved' || !u) throw new Error('沒有綁定成功')
+    return { detail: `建立員工「${u.name}」，職位現場人員，登入 PIN ${pin}`, shot: s }
+  })
+
+  await step('M3', 'LINE：員工收到確認訊息；開新工單時自動收到推播', async () => {
+    await go('/production')
+    await btn('＋ 開工單').click()
+    const m = modal()
+    await m.locator('select').nth(1).selectOption({ label: 'F001 三杯雞調理包（包）' })
+    await m.locator('input[type=number]').fill('50')
+    await m.getByRole('button', { name: '開立' }).click()
+    await toast('已開立')
+    await page.keyboard.press('Escape')
+    await go('/notify?tab=sim')
+    await page.locator('.sim-contact', { hasText: '陳小明' }).click()
+    const phone = page.locator('.phone')
+    await phone.getByText('管理員已確認你的職位').waitFor()
+    await phone.getByText('新工單').waitFor()
+    const d = await db()
+    const n = d.notifications.filter((x) => x.event === 'wo_created').at(-1)
+    const me = d.users.find((x) => x.name === '陳小明')
+    if (!n.user_ids.includes(me.id)) throw new Error('新工單通知沒有送給現場人員')
+    if (n.user_ids.includes(d.users.find((x) => x.name === '王老闆').id)) throw new Error('開單的人自己也收到通知')
+    return { detail: '陳小明收到「管理員已確認你的職位」與「新工單」推播（含開啟系統連結）；開單的王老闆自己不會收到', shot: await shot('line-push') }
+  })
+
+  await step('M4', 'LINE：員工在 LINE 輸入「暫停通知」', async () => {
+    await page.locator('#sim-text').fill('暫停通知')
+    await page.locator('.phone').getByRole('button', { name: '送出' }).click()
+    await page.locator('.phone').getByText('已暫停通知').waitFor()
+    await go('/notify?tab=contacts')
+    await page.locator('tr', { hasText: '陳小明' }).getByText('已暫停').waitFor()
+    return { detail: '後台「已綁定人員」同步顯示已暫停', shot: await shot('line-contacts') }
+  })
+
   await browser.close()
   fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(results, null, 2))
   const fails = results.filter((r) => !r.ok)

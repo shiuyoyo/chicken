@@ -1,5 +1,6 @@
 // 核心：日期工具、系統設定、權限、簽核、會計傳票與關帳檢查。
 import { all, get, where, insert, update, findBy, nextNo, nowISO, currentUser, transaction } from '../db/store'
+import { notify } from './notify'
 
 // ---------- 小工具 ----------
 const pad = (n) => String(n).padStart(2, '0')
@@ -36,6 +37,7 @@ export const SETTING_DEFAULTS = {
   closed_until: '', // 已關帳到哪一天（含）
   gui_prefix: 'AB', // 發票字軌
   gui_next: 10000001, // 下一張發票號碼
+  app_url: '', // 系統網址（通知訊息裡的「開啟系統」連結）
   lines: [
     { name: '一號蒸煮鍋', capacity: 500 },
     { name: '二號炒鍋', capacity: 300 },
@@ -56,6 +58,7 @@ export const SETTING_LABELS = {
   pos_points_per: '每多少元得 1 點',
   gui_prefix: '發票字軌',
   gui_next: '下一張發票號碼',
+  app_url: '系統網址（通知連結用）',
 }
 
 export function getSetting(key) {
@@ -144,7 +147,7 @@ export function requestApproval({ type, module, ref_table, ref_id, summary, amou
   // 同一張單據只留一筆待簽
   for (const a of where('approvals', (a) => a.status === 'pending' && a.type === type && ref_id && a.ref_id === ref_id))
     update('approvals', a.id, { status: 'superseded' })
-  return insert('approvals', {
+  const ap = insert('approvals', {
     no: nextNo('approvals', 'AP'),
     type,
     module,
@@ -157,6 +160,13 @@ export function requestApproval({ type, module, ref_table, ref_id, summary, amou
     status: 'pending',
     requested_by: currentUser()?.id || '',
   })
+  notify('approval_requested', {
+    module,
+    title: `待你核准：${APPROVAL_TYPES[type] || type}`,
+    lines: [summary, reason && `原因：${reason}`, amount ? `金額：$${Math.round(amount).toLocaleString()}` : '', `申請人：${currentUser()?.name || ''}`],
+    link: '/approvals',
+  })
+  return ap
 }
 
 export const pendingApprovals = () => where('approvals', (a) => a.status === 'pending')
@@ -178,6 +188,12 @@ export function decideApproval(id, approve, note = '') {
     const h = HANDLERS[ap.type]
     asSystem(() => (approve ? h?.approve?.(ap) : h?.reject?.(ap, note)))
     update('approvals', id, { status: approve ? 'approved' : 'rejected', decided_by: currentUser()?.id, decided_at: nowISO(), decision_note: note })
+    notify('approval_decided', {
+      userIds: [ap.requested_by],
+      title: `${approve ? '✅ 已核准' : '❌ 已退回'}：${APPROVAL_TYPES[ap.type] || ap.type}`,
+      lines: [ap.summary, `${approve ? '核准' : '退回'}人：${currentUser()?.name || ''}`, note && `說明：${note}`],
+      link: '/approvals?tab=sent',
+    })
   })
 }
 

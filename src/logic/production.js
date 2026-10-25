@@ -2,7 +2,8 @@
 // 產出（建立成品批號，記錄用了哪些原料批號）、結案退料、標準成本與實際成本。
 import { all, get, where, insert, update, nextNo, nowISO, transaction } from '../db/store'
 import { fail, need, round, sum, today, addDays, userName, getSetting, postJournal, assertOpen } from './core'
-import { allocate, move, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind } from './inventory'
+import { notify } from './notify'
+import { allocate, move, stockOf, lineBin, lotByNo, createLot, defaultBin, checkTemp, onHand, lastCost, lotCost, binOf, binKind } from './inventory'
 
 export const WO_STATUS = {
   planned: '待領料', issued: '已領料', cooking: '烹煮中', done: '待 QC', qc_pass: 'QC 合格', qc_fail: 'QC 不合格', closed: '已結案', cancelled: '已取消',
@@ -49,10 +50,16 @@ export function createWorkOrder({ sales_order_id, product_id, plan_qty, plan_dat
     if (!p.bom?.length) fail(`${p.name} 還沒有設定配方`)
     if (!(Number(plan_qty) > 0)) fail('請輸入計畫數量')
     line ||= getSetting('lines')?.[0]?.name || ''
-    return insert('work_orders', {
+    const wo = insert('work_orders', {
       no: nextNo('work_orders', 'WO', plan_date), sales_order_id: sales_order_id || '', product_id, plan_qty: Number(plan_qty), plan_date, line,
       status: 'planned', lot_no: nextProductLot(plan_date), feeds: [], output_qty: 0, waste_qty: 0, std_cost: bomCost(product_id), note,
     })
+    notify('wo_created', {
+      title: `新工單 ${wo.no}`,
+      lines: [`${p.name} ${wo.plan_qty} ${p.unit}`, `${plan_date}・${line}`, so ? `訂單 ${so.no}（${get('customers', so.customer_id)?.name}）` : '備貨生產'],
+      link: `/production?open=${wo.id}`,
+    })
+    return wo
   })
 }
 
@@ -80,6 +87,7 @@ export function issueMaterials(woId, lines, { date = today() } = {}) {
     if (!valid.length) fail('沒有輸入領料數量')
     const tol = Number(getSetting('issue_tolerance'))
     const needs = woNeeds(wo)
+    const before = Object.fromEntries(valid.map((l) => [l.item_id, stockOf(l.item_id, date)]))
     const line = lineBin()
     let value = 0
     for (const l of valid) {
@@ -96,6 +104,9 @@ export function issueMaterials(woId, lines, { date = today() } = {}) {
     }
     update('work_orders', wo.id, { status: wo.status === 'planned' ? 'issued' : wo.status, start_at: wo.start_at || nowISO() })
     postJournal({ date, memo: `領料 ${wo.no}`, lines: [{ account: 1320, debit: value }, { account: 1300, credit: value }], ref_type: 'work_orders', ref_id: wo.id })
+    // 這次領料讓原料跌破安全庫存才通知（已經低於的不重複通知）
+    const low = Object.keys(before).map((id) => get('items', id)).filter((i) => i.safety_stock > 0 && before[i.id] >= i.safety_stock && stockOf(i.id, date) < i.safety_stock)
+    if (low.length) notify('low_stock', { title: '原料低於安全庫存', lines: low.map((i) => `${i.name}：剩 ${stockOf(i.id, date)} ${i.unit}（安全量 ${i.safety_stock}）`), link: '/purchase' })
   })
 }
 
@@ -157,6 +168,7 @@ export function recordOutput(woId, { qty, waste = 0, date = today() }) {
     // 在製品轉成品：本次轉出 = 累計投料成本 × 本次產出比例
     const value = round(qty * unit_cost)
     postJournal({ date, memo: `產出入庫 ${wo.no} ${product.name} ${qty}${product.unit}`, lines: [{ account: 1310, debit: value }, { account: 1320, credit: value }], ref_type: 'work_orders', ref_id: wo.id })
+    notify('output_pending_qc', { title: '成品等待 QC', lines: [`${product.name} ${qty} ${product.unit}`, `批號 ${lot.lot_no}`, `工單 ${wo.no}`], link: '/qc' })
     return lot
   })
 }

@@ -29,6 +29,13 @@ const pick = (table, row) => {
 
 export function supabaseBackend({ url, key }) {
   const sb = createClient(url, key)
+  let kickTimer = null
+  const kickDispatch = () => {
+    clearTimeout(kickTimer)
+    kickTimer = setTimeout(() => {
+      sb.functions.invoke('notify-dispatch', { body: {} }).then(({ error }) => error && console.warn('通知發送函式尚未部署或失敗：', error.message))
+    }, 800)
+  }
   const report = (error) => {
     if (error) {
       console.error(error)
@@ -51,7 +58,11 @@ export function supabaseBackend({ url, key }) {
         op === 'delete'
           ? sb.from(table).delete().eq('id', row.id)
           : sb.from(table).upsert(pick(table, row))
-      q.then(({ error }) => report(error))
+      q.then(({ error }) => {
+        report(error)
+        // 有新通知寫進資料庫後，請 Edge Function 推播到 LINE / Telegram（多筆合併成一次呼叫）
+        if (!error && table === 'notifications' && op === 'insert' && row.status === 'queued') kickDispatch()
+      })
     },
     async replaceAll(all) {
       for (const [t, rows] of Object.entries(all)) {

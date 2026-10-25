@@ -1,6 +1,7 @@
 // 會計：收款、付款、費用、帳齡、損益、月結關帳。
 import { all, get, where, insert, update, nextNo, transaction } from '../db/store'
 import { fail, need, round, sum, today, daysBetween, postJournal, assertOpen, getSetting, setSetting, balances, pendingApprovals, ACCOUNTS } from './core'
+import { notify } from './notify'
 import { invoiceBalance } from './sales'
 import { billBalance, billStatus } from './purchase'
 import { stockRows, stockValueAsOf } from './inventory'
@@ -19,6 +20,8 @@ export function receivePayment({ invoice_id, amount, method = '匯款', date = t
     update('invoices', inv.id, { paid, status: invoiceBalance({ ...inv, paid }) <= 0 ? 'paid' : 'partial' })
     const p = insert('payments', { no: nextNo('payments', 'RV', date), kind: 'in', invoice_id, party_id: inv.customer_id, date, amount, method, note })
     postJournal({ date, memo: `收款 ${inv.no} ${get('customers', inv.customer_id)?.name}`, lines: [{ account: 1100, debit: amount }, { account: 1200, credit: amount }], ref_type: 'payments', ref_id: p.id })
+    const cust = get('customers', inv.customer_id)
+    notify('payment_received', { ownerId: cust?.owner_id, title: `收到貨款 $${Math.round(amount).toLocaleString()}`, lines: [`客戶：${cust?.name}`, `帳款 ${inv.no}・${method}`, invoiceBalance({ ...inv, paid }) > 0 ? `尚欠 $${Math.round(invoiceBalance({ ...inv, paid })).toLocaleString()}` : '已結清'], link: '/accounting?tab=ar' })
     return p
   })
 }
@@ -124,6 +127,7 @@ export function closePeriod(until) {
     const blocking = closingChecks(until).filter((c) => c.block && !c.ok)
     if (blocking.length) fail('關帳檢查未通過：' + blocking.map((c) => `${c.name}（${c.detail}）`).join('、'))
     setSetting('closed_until', until, { system: true })
+    notify('period_closed', { title: `已關帳至 ${until}`, lines: ['這個日期以前的帳務不能再異動'], link: '/accounting?tab=close' })
   })
 }
 

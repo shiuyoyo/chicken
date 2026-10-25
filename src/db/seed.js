@@ -1,6 +1,6 @@
 // 示範資料：一間做雞肉調理包的食品工廠（含工廠直營門市）。
 // 全部用正式的業務邏輯跑出來，所以庫存、批號、帳務、簽核都彼此一致。
-import { insert, clearAll, setPref, all, get, where, findBy } from './store'
+import { insert, update, clearAll, setPref, all, get, where, findBy, nowISO } from './store'
 import * as L from '../logic'
 
 const FULL = Object.fromEntries(Object.keys(L.MODULES).map((m) => [m, 3]))
@@ -43,6 +43,19 @@ export async function seedDemo() {
     return fn()
   }
   setPref('userId', U.王老闆)
+
+  // ---------- LINE / Telegram 通知綁定（示範） ----------
+  const contact = (channel, external_id, display_name, user, role, extra = {}) =>
+    insert('notify_contacts', {
+      channel, external_id, display_name, picture_url: '', state: 'done', status: user ? 'approved' : 'pending', requested_role_id: roleIds[role],
+      requested_name: user || '', user_id: user ? U[user] : '', muted: false, approved_by: user ? U.王老闆 : '', approved_at: user ? nowISO() : null, ...extra,
+    })
+  contact('line', 'demo-line-boss', '王大明', '王老闆', '管理者')
+  contact('line', 'demo-line-factory', '劉廠長 Kevin', '劉廠長', '廠長')
+  contact('line', 'demo-line-sales', '陳小陳', '陳業務', '業務')
+  contact('telegram', 'demo-tg-qc', 'Lee QC', '李品管', '品管')
+  contact('line', 'demo-line-new1', '阿明 🐣', null, '現場人員', { requested_name: '阿明' })
+  contact('telegram', 'demo-tg-new2', 'Amy Lin', null, '門市人員', { requested_name: '林艾咪' })
   const d = (n) => L.addDays(L.today(), n)
 
   // ---------- 倉儲 ----------
@@ -228,6 +241,8 @@ export async function seedDemo() {
     L.recordExpense({ account: 6400, amount: 28000, date: d(-20), memo: '廠房租金' })
   })
 
+  // 示範資料產生的通知只供預覽，切到雲端後不會真的送出
+  for (const n of all('notifications')) update('notifications', n.id, { status: 'demo' })
   setPref('userId', '')
   return all('items').length
 }

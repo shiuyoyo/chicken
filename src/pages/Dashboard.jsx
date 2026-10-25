@@ -60,6 +60,7 @@ export default function Dashboard() {
 
       <div className="grid grid-kpi">
         <Kpi label="待我簽核" value={mine.length} sub={myReq.length ? `我送出的 ${myReq.length} 筆等待中` : '沒有等待中的申請'} to="/approvals" tone={mine.length ? 'warn' : ''} />
+        {c('admin', 2) && L.pendingContacts().length > 0 && <Kpi label="LINE 綁定申請" value={L.pendingContacts().length} sub="員工等你確認職位" to="/notify" tone="warn" />}
         {c('progress') && <Kpi label="進行中訂單" value={active.length} sub={late ? `⚠ ${late} 張已過交期` : '皆在交期內'} to="/progress" tone={late ? 'bad' : ''} />}
         {c('qc') && <Kpi label="待 QC 批號" value={L.pendingLots().length} sub="合格才能出貨 / 使用" to="/qc" />}
         {c('wms') && <Kpi label="效期預警" value={expiring.length} sub={`${L.getSetting('expiry_warn_days')} 天內到期或已過期`} to="/wms?tab=expiry" tone={expiring.some((l) => L.isExpired(l)) ? 'bad' : ''} />}

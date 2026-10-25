@@ -4,6 +4,7 @@ import {
   fail, need, needAny, round, sum, today, addDays, taxRate, postJournal, assertOpen, nextGui, getSetting,
   requestApproval, registerApproval, isSystem,
 } from './core'
+import { notify } from './notify'
 import { allocate, move, lotByNo, lotCost, quarantineBin, binOf } from './inventory'
 import { invoiceBalance } from './sales'
 
@@ -57,6 +58,12 @@ export function shipGoods({ sales_order_id, lines, boxes, pack_mode = '紙箱', 
     postJournal({ date, memo: `出貨成本 ${shipment.no}`, lines: [{ account: 5100, debit: cogs }, { account: 1310, credit: cogs }], ref_type: 'shipments', ref_id: shipment.id })
     // 全部出完自動結案
     if (so.lines.every((l) => remainingToShip(so, l.item_id) <= 0)) update('sales_orders', so.id, { status: 'closed' })
+    notify('shipped', {
+      ownerId: cust?.owner_id,
+      title: `已出貨給 ${cust?.name}`,
+      lines: [`${shipment.no}（訂單 ${so.no}）`, valid.map((l) => `${get('items', l.item_id)?.name} × ${l.qty}`).join('、'), `${shipment.boxes} 箱・${pack_mode}${container_no ? ' ' + container_no : ''}`],
+      link: `/progress/${so.id}`,
+    })
     return shipment
   })
 }

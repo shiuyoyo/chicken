@@ -1,6 +1,7 @@
 // 品管：成品抽檢（FQC）、進料檢驗（IQC）。不合格改判合格要主管簽核。
 import { all, get, where, insert, update, nextNo, transaction } from '../db/store'
 import { fail, need, can, today, userName, requestApproval, registerApproval, isSystem } from './core'
+import { notify } from './notify'
 import { lotByNo } from './inventory'
 
 export const DEFAULT_CHECKS = [
@@ -48,6 +49,14 @@ export function saveInspection(data) {
       return { qc, pending: true }
     }
     applyResult(lot, data.result)
+    if (data.result === 'fail') {
+      const item = get('items', lot.item_id)
+      notify('qc_failed', {
+        title: `QC 不合格：${item?.name}`,
+        lines: [`批號 ${lot.lot_no}（${kind === 'IQC' ? '進料' : '成品'}）`, `數量 ${lot.qty} ${item?.unit || ''}`, data.note && `說明：${data.note}`, '已管制，不能使用或出貨'],
+        link: `/trace?lot=${lot.lot_no}`,
+      })
+    }
     return { qc, pending: false }
   })
 }

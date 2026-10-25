@@ -68,7 +68,7 @@ async function noBadToast() {
 // 本機儲存會延遲約 150ms 合併寫入，讀之前稍等
 const db = async () => {
   await page.waitForTimeout(400)
-  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v2')))
+  return page.evaluate(() => JSON.parse(localStorage.getItem('food-erp:data:v3')))
 }
 const btn = (name, opt = {}) => page.getByRole('button', { name, ...opt })
 const modal = () => page.locator('.modal').last()

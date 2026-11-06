@@ -1,5 +1,5 @@
 // 登入、使用者、角色權限、主檔維護（含驗證規則）。
-import { all, get, where, insert, update, remove, setPref, currentUser, transaction } from '../db/store'
+import { all, get, where, insert, update, remove, setPref, currentUser, transaction, isCloud, currentBackend } from '../db/store'
 import { fail, need, can, MODULES, LEVELS } from './core'
 import { checkTemp } from './inventory'
 import { ITEM_TYPES, findCycle } from './bom'
@@ -29,10 +29,18 @@ export function login(userId, pin) {
 const goHome = () => {
   if (typeof location !== 'undefined' && location.hash !== '#/') location.hash = '#/'
 }
-export const logout = () => {
+export const logout = async () => {
   goHome()
   setPref('userId', '')
+  // 雲端：等資料都送完再登出 Supabase 帳號
+  if (isCloud()) {
+    const b = currentBackend()
+    await b.flushed?.()
+    await b.sb.auth.signOut()
+    location.reload()
+  }
 }
+export const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ''))
 
 // ---------- 使用者 / 角色 ----------
 const adminCount = (users = all('users'), roles = all('roles')) =>
@@ -43,7 +51,13 @@ export function saveUser(data, id) {
     need('admin', 2)
     if (!data.name) fail('請輸入姓名')
     if (!get('roles', data.role_id)) fail('請選擇角色')
-    if (!/^\d{4,6}$/.test(String(data.pin || ''))) fail('PIN 碼請設定 4–6 位數字')
+    // 雲端用 Email + 密碼登入，PIN 可以不設；本機用 PIN 登入
+    if ((!isCloud() || data.pin) && !/^\d{4,6}$/.test(String(data.pin || ''))) fail('PIN 碼請設定 4–6 位數字')
+    if (data.email) {
+      data = { ...data, email: String(data.email).trim().toLowerCase() }
+      if (!isEmail(data.email)) fail('Email 格式不正確')
+      if (where('users', (u) => String(u.email || '').toLowerCase() === data.email && u.id !== id).length) fail('這個 Email 已經有其他員工使用')
+    } else if (isCloud() && data.active !== false) fail('雲端版請填 Email，員工要用這個 Email 登入')
     if (where('users', (u) => u.name === data.name && u.id !== id).length) fail('姓名重複')
     if (id === currentUser()?.id && data.active === false) fail('不能停用自己')
     const next = id ? all('users').map((u) => (u.id === id ? { ...u, ...data } : u)) : [...all('users'), { ...data, active: data.active !== false }]

@@ -1,6 +1,8 @@
 node_modules
 dist
 dist-single
+dist-cloud
+tests/e2e/out-cloud
 .env
 .env.local
 tests/e2e/out

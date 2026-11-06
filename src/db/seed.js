@@ -1,6 +1,6 @@
 // 示範資料：一間做雞肉調理包的工廠（含工廠直營門市）。示範多階 BOM（醬汁半成品、禮盒組裝）與變化款料號。
 // 全部用正式的業務邏輯跑出來，所以庫存、批號、帳務、簽核都彼此一致。
-import { insert, update, clearAll, setPref, all, get, where, findBy, nowISO } from './store'
+import { insert, update, clearAll, setPref, all, get, where, findBy, nowISO, isCloud, currentBackend, useBackend, exportAll, importAll, currentUser } from './store'
 import * as L from '../logic'
 
 const FULL = Object.fromEntries(Object.keys(L.MODULES).map((m) => [m, 3]))
@@ -19,7 +19,29 @@ export const DEMO_USERS = [
   ['周店長', '店長', '8888'],
 ]
 
-export async function seedDemo() {
+// 雲端：先在記憶體裡跑完整個示範情境，再一次上傳（只有系統擁有者可以），
+// 並把「王老闆」綁定到目前登入者的 Email，才不會把自己鎖在外面
+export async function seedDemo({ ownerEmail } = {}) {
+  if (!isCloud()) return seedDemoData()
+  const cloud = currentBackend()
+  const email = ownerEmail || currentUser()?.email
+  useBackend({ name: 'memory', loadAll: async (t) => Object.fromEntries(t.map((x) => [x, []])), save() {}, replaceAll: async () => {} })
+  let data
+  try {
+    await seedDemoData()
+    data = exportAll()
+  } finally {
+    useBackend(cloud)
+  }
+  const boss = data.users.find((u) => u.name === '王老闆')
+  if (boss && email) boss.email = email
+  await importAll(data)
+  const me = data.users.find((u) => u.email && u.email === email)
+  setPref('userId', me?.id || '')
+  return data.items.length
+}
+
+async function seedDemoData() {
   await clearAll()
   const base = { dashboard: 1, progress: 1, trace: 1 }
   const roles = {

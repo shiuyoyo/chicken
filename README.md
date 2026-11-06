@@ -60,30 +60,32 @@ ERP、CRM、WMS、POS、品管、會計共用同一套資料，任何一張單�
 ```bash
 npm install
 npm run dev          # 開發（--host，同網段手機可直接連）
-npm test             # 業務規則測試（vitest）
+npm test             # 業務規則測試 + 資料庫權限測試（vitest；有安裝 PostgreSQL 才會跑權限測試）
 npm run build        # 產生 dist/
 npm run build:single # 單一 HTML 檔 dist-single/index.html
 npm run schema       # 由 src/db/schema.js 重新產生 supabase/schema.sql
 npm run e2e          # 驗收測試（需先 npm run build && npm run preview）
+npm run e2e:cloud    # 雲端版驗收：Email 登入、開通、權限（需要本機 PostgreSQL，會自己建置與啟動）
 npm run test:functions # Edge Functions 測試（需要 Deno）
 ```
 
-## 資料庫
+## 資料庫與上線
 
-預設存在**瀏覽器本機**（每台裝置一份，第一次開啟載入示範資料）。
-要讓多台裝置共用時改用 Supabase：
+預設存在**瀏覽器本機**（每台裝置一份，第一次開啟載入示範資料，用 PIN 登入）。
 
-1. 建立 Supabase 專案，在 SQL Editor 執行 `supabase/schema.sql`
-2. 在「開發者 → 資料庫設定」填入 Project URL 與 anon key，按「上傳本機資料並切換」
-   （或在 `.env` 設定 `VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`）
+要讓多台裝置共用、正式上線時改用 **Supabase + Vercel**，步驟見 [docs/deploy.md](docs/deploy.md)：
 
-> schema.sql 的 RLS policy 目前允許匿名讀寫，只適合試用。正式上線前要改用 Supabase Auth 登入並設定 policy；
-> 目前的 PIN 登入與權限檢查在瀏覽器端執行，可防止誤操作，但不能防止懂技術的人繞過。
+- 員工用 **Email + 密碼** 登入（Supabase Auth，要驗證信箱）；管理員在「使用者與權限」登記員工的 Email 才算開通。
+- 資料庫依登入者的角色檢查讀寫（Row Level Security），傳票平衡、關帳、庫存不足、簽核規則也在伺服器端再檢查一次。
+  一個動作的所有異動在同一個資料庫交易裡完成，有一筆被拒絕就整批取消。
+- 伺服器端檢查了哪些、還有哪些只在畫面上檢查，見 [docs/deploy.md 的安全性一節](docs/deploy.md#安全性伺服器上檢查了什麼)。
 
 ## 程式結構
 
 ```
 src/db/schema.js    資料表與關聯定義（本機與 Supabase 共用）
+src/db/policies.js  雲端權限規則與伺服器端檢查（產生在 supabase/schema.sql）
+src/cloud/          雲端版登入、開通、第一次設定畫面
 src/db/store.js     讀寫中心：記憶體快取、交易還原、單號
 src/db/seed.js      示範資料（用正式業務邏輯跑出來）
 src/logic/          業務邏輯：core 權限/簽核/會計、bom 多階 BOM/變化款/檢驗範本、inventory WMS、purchase、sales、production、

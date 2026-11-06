@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { all, get, where, currentUser } from '../db/store'
+import { all, get, where, currentUser, isCloud } from '../db/store'
 import * as L from '../logic'
 import { Modal, Field, Input, Select, Check, Table, Badge, Tabs, attempt, ask, useTab } from '../ui'
 
@@ -32,6 +32,7 @@ function Users() {
         <Table rows={all('users')} onRow={canEdit ? (u) => setEdit({ ...u }) : undefined} columns={[
           { h: '姓名', r: (u) => <b>{u.name}</b> },
           { h: '角色', r: (u) => get('roles', u.role_id)?.name },
+          { h: '登入 Email', r: (u) => <span className="small">{u.email || <span className="muted">—</span>}</span> },
           { h: '狀態', r: (u) => (u.active === false ? <Badge kind="bad">停用</Badge> : <Badge kind="ok">啟用</Badge>) },
           { h: '最近操作', r: (u) => <span className="small muted">{all('audit_log').find((a) => a.user_name === u.name)?.at?.slice(0, 16).replace('T', ' ') || '—'}</span> },
         ]} />
@@ -41,7 +42,8 @@ function Users() {
           <div className="form-grid">
             <Field label="姓名"><Input value={edit.name} onChange={(v) => setEdit({ ...edit, name: v })} /></Field>
             <Field label="角色"><Select value={edit.role_id} options={all('roles').map((r) => ({ value: r.id, label: r.name }))} onChange={(v) => setEdit({ ...edit, role_id: v })} /></Field>
-            <Field label="登入 PIN（4–6 位數字）"><Input inputMode="numeric" value={edit.pin} onChange={(v) => setEdit({ ...edit, pin: v.replace(/\D/g, '') })} /></Field>
+            <Field label="登入 Email" hint={isCloud() ? '雲端版：員工用這個 Email 設定密碼並登入' : '改用雲端時，員工用這個 Email 登入'}><Input type="email" value={edit.email} onChange={(v) => setEdit({ ...edit, email: v })} placeholder="name@company.com" /></Field>
+            <Field label={isCloud() ? '本機 PIN（雲端版可不填）' : '登入 PIN（4–6 位數字）'}><Input inputMode="numeric" value={edit.pin} onChange={(v) => setEdit({ ...edit, pin: v.replace(/\D/g, '') })} /></Field>
             <Field label="手機"><Input value={edit.phone} onChange={(v) => setEdit({ ...edit, phone: v })} /></Field>
             <Check checked={edit.active !== false} onChange={(v) => setEdit({ ...edit, active: v })} label="啟用" />
           </div>

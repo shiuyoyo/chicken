@@ -40,10 +40,18 @@ export function backendName() {
 export function useBackend(b) {
   backend = b
 }
+export const currentBackend = () => backend
+export const isCloud = () => backend.kind === 'supabase'
 
 export async function initStore() {
   const cfg = supabaseConfig()
-  if (cfg) backend = supabaseBackend(cfg)
+  // 雲端拒絕某次寫入時（權限、關帳…），重新載入伺服器上的資料，畫面才不會跟資料庫不一致
+  if (cfg && backend.kind !== 'supabase') backend = supabaseBackend(cfg, { onRejected: () => reloadAll() })
+  return reloadAll()
+}
+
+// 重新從後端載入全部資料（雲端寫入被拒絕時用來回到伺服器上的正確狀態）
+export async function reloadAll() {
   const data = await backend.loadAll(TABLES)
   cache = Object.fromEntries(TABLES.map((t) => [t, data[t] || []]))
   emit()
@@ -70,7 +78,13 @@ export function memo(key, fn) {
 // ---- 寫入 ----
 function persist(t, op, row) {
   if (txDepth) txOps.push([t, op, row])
-  else backend.save(t, op, row, cache)
+  else flush([[t, op, row]])
+}
+// 雲端後端一次收一整批（同一個資料庫交易），本機後端逐筆寫
+function flush(ops) {
+  if (!ops.length) return
+  if (backend.saveBatch) backend.saveBatch(ops.map(([t, op, row]) => ({ t, op, row })), cache)
+  else for (const [t, op, row] of ops) backend.save(t, op, row, cache)
 }
 
 const writeLog = (action, table, row, summary) => {
@@ -133,7 +147,7 @@ export function transaction(fn) {
     const ops = txOps
     txDepth = 0
     txOps = null
-    for (const [t, op, row] of ops) backend.save(t, op, row, cache)
+    flush(ops)
     if (txDirty) listeners.forEach((l) => l())
     return result
   } catch (e) {
@@ -149,9 +163,11 @@ export function exportAll() {
   return JSON.parse(JSON.stringify(cache))
 }
 
+// 整份覆蓋：後端成功才換掉畫面上的資料（雲端只有系統擁有者可以）
 export async function importAll(data) {
-  cache = Object.fromEntries(TABLES.map((t) => [t, Array.isArray(data[t]) ? data[t] : []]))
-  await backend.replaceAll(cache)
+  const next = Object.fromEntries(TABLES.map((t) => [t, Array.isArray(data[t]) ? data[t] : []]))
+  await backend.replaceAll(next)
+  cache = next
   emit()
 }
 

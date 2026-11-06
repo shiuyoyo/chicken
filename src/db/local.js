@@ -1,6 +1,15 @@
 // 本機儲存：整份資料存在瀏覽器 localStorage（每台裝置各自一份）。
 const KEY = 'food-erp:data:v5'
 
+// 這台裝置上的本機資料（第一次切到雲端時可以上傳）
+export function readLocalData() {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
 export function localBackend() {
   let pending = false
   let snapshot = null

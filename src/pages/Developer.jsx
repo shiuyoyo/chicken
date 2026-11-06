@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { all, get, exportAll, importAll, clearAll, backendName, currentUser } from '../db/store'
+import { all, get, exportAll, importAll, backendName, currentUser } from '../db/store'
 import { SCHEMA, TABLES, REFS, schemaSQL } from '../db/schema'
-import { supabaseConfig, setSupabaseConfig, supabaseBackend } from '../db/supabase'
+import { supabaseConfig, setSupabaseConfig } from '../db/supabase'
 import { seedDemo } from '../db/seed'
 import * as L from '../logic'
 import { Field, Input, Table, Badge, dt, toast, Search, matches, ask, useTab, Tabs } from '../ui'
@@ -108,6 +108,15 @@ function HealthCheck() {
   )
 }
 
+const tryAsync = async (fn, ok) => {
+  try {
+    await fn()
+    toast(ok)
+  } catch (e) {
+    toast(e.message, 'bad')
+  }
+}
+
 function Backup() {
   const [text, setText] = useState('')
   const json = () => JSON.stringify(exportAll())
@@ -130,7 +139,7 @@ function Backup() {
       await importAll(data)
       toast('已還原')
     } catch (err) {
-      toast('格式錯誤：' + err.message, 'bad')
+      toast('還原失敗：' + err.message, 'bad')
     }
   }
   return (
@@ -152,7 +161,7 @@ function Backup() {
       <div className="card card-pad stack">
         <h2>示範資料</h2>
         <p className="muted" style={{ margin: 0 }}>清空並重新載入示範工廠（三杯雞、麻油雞、舒肥雞胸，含各種待簽核單據）。會登出。</p>
-        <button className="btn" onClick={async () => (await ask('會清除所有資料並重新載入示範資料，確定？', { danger: true })) && (await seedDemo(), toast('已重新載入示範資料'))}>重設為示範資料</button>
+        <button className="btn" onClick={async () => (await ask('會清除所有資料並重新載入示範資料，確定？', { danger: true })) && (await tryAsync(seedDemo, '已重新載入示範資料'))}>重設為示範資料</button>
       </div>
       <div className="card card-pad stack">
         <h2>清空資料</h2>
@@ -161,9 +170,7 @@ function Backup() {
           if ((await ask('輸入「清空」確認刪除所有資料', { input: true, danger: true })) !== '清空') return
           const user = currentUser()
           const role = get('roles', user?.role_id)
-          await clearAll()
-          await importAll({ users: user ? [user] : [], roles: role ? [role] : [] })
-          toast('資料已清空')
+          await tryAsync(() => importAll({ users: user ? [user] : [], roles: role ? [role] : [] }), '資料已清空')
         }}>清空所有資料</button>
       </div>
     </div>
@@ -183,7 +190,8 @@ function DbSettings() {
       const missing = []
       for (const t of TABLES) {
         const { error } = await sb.from(t).select('id').limit(1)
-        if (error) missing.push(`${t}：${error.message}`)
+        // 沒登入時被權限擋下是正常的（代表資料表存在）；只有「不存在」才算缺
+        if (error && /does not exist|Could not find/i.test(error.message)) missing.push(`${t}：${error.message}`)
       }
       setMsg(missing.length ? '連上了，但有資料表有問題（請先執行下方 SQL）：\n' + missing.join('\n') : '✅ 連線成功，所有資料表都在')
       return !missing.length
@@ -192,12 +200,9 @@ function DbSettings() {
       return false
     }
   }
-  const switchTo = async (migrate) => {
+  const switchTo = async () => {
     if (!(await test())) return
-    if (migrate) {
-      if (!(await ask('會把這台裝置的資料上傳到 Supabase（覆蓋雲端資料），確定？'))) return
-      await supabaseBackend({ url, key }).replaceAll(exportAll())
-    }
+    if (!(await ask('切換後要用 Email 登入。第一次用「系統擁有者」的 Email 登入時，可以選擇上傳這台裝置的本機資料或載入示範資料。確定切換？'))) return
     setSupabaseConfig({ url, key })
     location.reload()
   }
@@ -208,9 +213,10 @@ function DbSettings() {
         <p className="muted" style={{ margin: 0 }}>目前使用：<b>{backendName()}</b>{cur?.from === 'env' && '（由 .env 設定）'}。改用 Supabase 後，所有手機、電腦會看到同一份資料。</p>
         <ol className="small" style={{ margin: 0, paddingLeft: 20 }}>
           <li>到 supabase.com 建立專案</li>
-          <li>SQL Editor 貼上下方 SQL 執行，建立 {TABLES.length} 張資料表與索引</li>
-          <li>Project Settings → API 複製 Project URL 與 anon key 貼到下面</li>
-          <li>按「上傳本機資料並切換」</li>
+          <li>SQL Editor 貼上下方 SQL 執行，建立 {TABLES.length} 張資料表、權限規則與伺服器端檢查</li>
+          <li>在 SQL Editor 再執行一行，設定系統擁有者（換成你的 Email）：<code>insert into erp_private.owners values ('you@company.com');</code></li>
+          <li>Project Settings → API 複製 Project URL 與 anon key 貼到下面，按「切換到雲端」</li>
+          <li>用系統擁有者的 Email 按「第一次使用？設定密碼」，收信確認後登入，選擇上傳本機資料或載入示範資料</li>
         </ol>
         <div className="form-grid">
           <Field label="Project URL"><Input value={url} onChange={setUrl} placeholder="https://xxxx.supabase.co" /></Field>
@@ -218,8 +224,7 @@ function DbSettings() {
         </div>
         <div className="row">
           <button className="btn" disabled={!url || !key} onClick={test}>測試連線</button>
-          <button className="btn primary" disabled={!url || !key} onClick={() => switchTo(true)}>上傳本機資料並切換</button>
-          <button className="btn" disabled={!url || !key} onClick={() => switchTo(false)}>直接切換</button>
+          <button className="btn primary" disabled={!url || !key || cur?.from === 'env'} onClick={switchTo}>切換到雲端</button>
           {cur?.from === 'settings' && <button className="btn danger" onClick={() => { setSupabaseConfig(null); location.reload() }}>改回本機儲存</button>}
         </div>
         {msg && <pre className="small" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{msg}</pre>}

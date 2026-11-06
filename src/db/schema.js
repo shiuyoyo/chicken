@@ -1,4 +1,5 @@
 // 資料表定義：本機儲存與 Supabase 共用這一份。
+import { policiesSQL } from './policies.js'
 // 欄位型別只用於產生 Supabase SQL（scripts/gen-schema.mjs、開發者頁面）。
 // 每張表都自動有 id (text pk)、created_at、updated_at。
 // 欄位名稱以 _id 結尾者是關聯（外鍵），REFS 列出對應的表，供關聯圖與檢查使用。
@@ -6,7 +7,7 @@
 export const SCHEMA = {
   // ---------- 系統 / 權限 ----------
   roles: { label: '角色與權限', group: '系統', cols: { name: 'text', perms: 'jsonb', note: 'text' } },
-  users: { label: '使用者', group: '系統', cols: { name: 'text', role_id: 'text', pin: 'text', active: 'boolean', phone: 'text' } },
+  users: { label: '使用者', group: '系統', cols: { name: 'text', role_id: 'text', pin: 'text', active: 'boolean', phone: 'text', email: 'text' } },
   settings: { label: '系統設定', group: '系統', cols: { key: 'text', value: 'jsonb' } },
   approvals: {
     label: '簽核',
@@ -225,13 +226,8 @@ export function schemaSQL() {
     for (const c of Object.keys(def.cols)) if (REFS[c]) out.push(`create index if not exists ${t}_${c}_idx on public.${t} (${c});`)
     if (t === 'notify_contacts') out.push(`create unique index if not exists notify_contacts_channel_ext_idx on public.${t} (channel, external_id);`)
     if (t === 'notifications') out.push(`create index if not exists notifications_status_idx on public.${t} (status, created_at);`)
-    out.push(
-      `alter table public.${t} enable row level security;`,
-      `-- 試用階段：允許匿名讀寫。正式上線前請改成依登入使用者的 policy。`,
-      `drop policy if exists "${t}_all" on public.${t};`,
-      `create policy "${t}_all" on public.${t} for all using (true) with check (true);`,
-      '',
-    )
+    out.push(`alter table public.${t} enable row level security;`, '')
   }
+  out.push(policiesSQL())
   return out.join('\n')
 }

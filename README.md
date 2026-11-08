@@ -25,7 +25,7 @@ ERP、CRM、WMS、POS、品管、會計共用同一套資料，任何一張單�
 | **權限與簽核** | PIN 登入、角色權限矩陣（無 / 檢視 / 編輯 / 核准）、簽核中心、操作紀錄 | 套用在所有系統；申請人不能核准自己的申請 |
 | **開發者** | 資料表瀏覽、外鍵完整性與帳務健康檢查、備份還原、Supabase 設定與建表 SQL | — |
 
-「系統關聯圖」頁面有完整的資料流圖與資料表關聯。與鼎新 ERP 的流程對照見 [docs/digiwin-comparison.md](docs/digiwin-comparison.md)。
+「系統關聯圖」頁面有完整的資料流圖與資料表關聯。與鼎新 ERP 的流程對照見 [docs/digiwin-comparison.md](docs/digiwin-comparison.md)。操作說明見 [docs/manual.md](docs/manual.md)。
 
 ## 營運規則（都有自動化測試）
 

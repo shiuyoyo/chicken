@@ -21,7 +21,7 @@ ERP、CRM、WMS、POS、品管、會計共用同一套資料，任何一張單�
 | **批號追溯** | 任一批號多階往上追到每一層用料與供應商，往下追到半成品、成品、禮盒，再到客戶與門市會員，產出召回名單 | 串起採購、生產、出貨、POS |
 | **訂單進度** | 接單 → 原料進貨 → 領料 → 投料 → 產出 → QC → 出貨 → 收款，每階段數量與完整歷程 | 彙整所有關聯單據 |
 | **LINE / Telegram 通知** | 員工加入官方帳號自己選職位，管理員在後台確定後，相關資料異動自動推播（簽核、訂單、進貨、工單、QC、出貨、收款、低庫存、日結、關帳）；可設定每種事件通知哪些職位；網頁上有模擬器可以試用 | 通知在每個業務動作的同一個交易中產生；設定方式見 [docs/line-setup.md](docs/line-setup.md) |
-| **表單列印** | 27 種 A4 單據（報價、訂單、出貨、揀貨、請購、採購、進貨、領料、退料、生產入庫、製令、檢驗、對帳單、傳票…）、批號標籤（QR Code）、58mm 收據 | 每筆庫存異動都有單號（RC 進貨、MI 領料、MR 退料、MS 入庫…），對應鼎新的單據 |
+| **表單列印** | 簽核單、BOM 表、報價、訂單、出貨、揀貨、請購、採購、進貨、領料、退料、生產入庫、製令、生產日報、檢驗、對帳單、傳票、帳齡表、試算表、損益表、庫存明細、效期預警、價目表、主檔清單；批號標籤與出貨嘜頭（QR Code）、58mm 收據。清單見 [docs/forms-checklist.md](docs/forms-checklist.md) | 每筆庫存異動都有單號（RC 進貨、MI 領料、MR 退料、MS 入庫…），對應鼎新的單據 |
 | **權限與簽核** | PIN 登入、角色權限矩陣（無 / 檢視 / 編輯 / 核准）、簽核中心、操作紀錄 | 套用在所有系統；申請人不能核准自己的申請 |
 | **開發者** | 資料表瀏覽、外鍵完整性與帳務健康檢查、備份還原、Supabase 設定與建表 SQL | — |
 
@@ -66,6 +66,8 @@ npm run build:single # 單一 HTML 檔 dist-single/index.html
 npm run schema       # 由 src/db/schema.js 重新產生 supabase/schema.sql
 npm run e2e          # 驗收測試（需先 npm run build && npm run preview）
 npm run e2e:cloud    # 雲端版驗收：Email 登入、開通、權限（需要本機 PostgreSQL，會自己建置與啟動）
+npm run e2e:flows    # 全流程驗收（本機版，需先 preview）；npm run e2e:flows:cloud 跑雲端版
+npm run test:replay  # 業務規則測試的每一批寫入都送進真的 PostgreSQL，確認伺服器不會擋正常操作
 npm run test:functions # Edge Functions 測試（需要 Deno）
 ```
 
@@ -78,7 +80,7 @@ npm run test:functions # Edge Functions 測試（需要 Deno）
 - 員工用 **Email + 密碼** 登入（Supabase Auth，要驗證信箱）；管理員在「使用者與權限」登記員工的 Email 才算開通。
 - 資料庫依登入者的角色檢查讀寫（Row Level Security），傳票平衡、關帳、庫存不足、簽核規則也在伺服器端再檢查一次。
   一個動作的所有異動在同一個資料庫交易裡完成，有一筆被拒絕就整批取消。
-- 伺服器端檢查了哪些、還有哪些只在畫面上檢查，見 [docs/deploy.md 的安全性一節](docs/deploy.md#安全性伺服器上檢查了什麼)。
+- 簽核門檻（採購金額、信用額度、最低售價、調整 / 盤差金額、退貨、作廢、QC 改判）與數量上限（超收、超領、超出貨、超額收付款）也由伺服器檢查，見 [docs/deploy.md 的安全性一節](docs/deploy.md#安全性伺服器上檢查了什麼)。
 
 ## 程式結構
 

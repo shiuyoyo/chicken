@@ -95,6 +95,7 @@ export default function Accounting() {
           <Field label="期間起"><Input type="date" value={from} onChange={setFrom} /></Field>
           <Field label="期間迄"><Input type="date" value={to} onChange={setTo} /></Field>
           <button className="btn sm" onClick={() => { setFrom(''); setTo('') }}>全部期間</button>
+          <PrintButton sm type={tab === 'pl' ? 'income_statement' : 'trial_balance'} id={(to || L.today()).slice(0, 7)} label={tab === 'pl' ? '損益表（月）' : '試算表（月底）'} />
         </div>
       )}
       {tab === 'pl' && (
@@ -162,7 +163,7 @@ function AgingTable({ kind }) {
   if (!rows.length) return null
   return (
     <div className="card">
-      <div className="card-head"><h3>{kind === 'ar' ? '應收' : '應付'}帳齡分析</h3></div>
+      <div className="card-head"><h3 className="grow">{kind === 'ar' ? '應收' : '應付'}帳齡分析</h3><PrintButton sm type="aging" id={kind} label="帳齡表" /></div>
       <Table rows={rows.map((r) => ({ id: r.party, ...r }))} columns={[
         { h: kind === 'ar' ? '客戶' : '供應商', r: (r) => (kind === 'ar' ? <DocLink t="customers" id={r.party} /> : partyName('suppliers', r.party)) },
         ...L.AGING_BUCKETS.map((b, i) => ({ h: b, cls: 'num', r: (r) => (r.buckets[i] ? <span className={i >= 2 ? 'tone-bad' : ''}>{money(r.buckets[i])}</span> : '') })),

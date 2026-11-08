@@ -12,7 +12,10 @@
     "test": "vitest run",
     "e2e": "node tests/e2e/acceptance.cjs",
     "test:functions": "cd supabase/functions && deno test tests/",
-    "e2e:cloud": "node tests/e2e/cloud.cjs"
+    "e2e:cloud": "node tests/e2e/cloud.cjs",
+    "test:replay": "vitest run --config vitest.replay.config.js",
+    "e2e:flows": "node tests/e2e/flows.cjs local",
+    "e2e:flows:cloud": "node tests/e2e/flows.cjs cloud"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

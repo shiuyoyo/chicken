@@ -223,6 +223,10 @@ begin
     if new.decided_by = new.requested_by and coalesce(public.erp_setting('allow_self_approve') #>> '{}', 'false') <> 'true' then
       raise exception '申請人不能核准自己的申請，請由其他主管處理';
     end if;
+    -- 記下「這個交易裡核准了什麼」，給下面的門檻檢查用（核准後執行的動作在同一個交易裡）
+    if new.status = 'approved' then
+      perform set_config('erp.approved', coalesce(current_setting('erp.approved', true), '') || '|' || new.type || ':' || coalesce(new.ref_id, '') || '|', true);
+    end if;
   elsif new.status not in ('pending', 'superseded') then
     raise exception '簽核狀態不正確：%', new.status;
   end if;
@@ -256,6 +260,211 @@ begin
 end $$;
 drop trigger if exists erp_audit_stamp on public.audit_log;
 create trigger erp_audit_stamp before insert on public.audit_log for each row execute function public.erp_audit_stamp();
+
+-- ======================================================================
+-- 簽核門檻與數量上限（伺服器端）：在交易結束（commit）時檢查，
+-- 所以「核准」與「核准後執行的動作」在同一批送來時，順序不影響
+-- ======================================================================
+create or replace function public.erp_num(k text, d numeric) returns numeric
+language sql stable security definer set search_path = '' as $$
+  select coalesce(nullif(public.erp_setting(k) #>> '{}', '')::numeric, d)
+$$;
+create or replace function public.erp_flag(k text, d boolean) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce(nullif(public.erp_setting(k) #>> '{}', '')::boolean, d)
+$$;
+-- 這個交易裡是否核准了某張單據
+create or replace function public.erp_approved_now(t text, ref text) returns boolean
+language sql stable set search_path = '' as $$
+  select position('|' || t || ':' || coalesce(ref, '') || '|' in coalesce(current_setting('erp.approved', true), '')) > 0
+$$;
+-- 這張單據是否有已核准、金額涵蓋 amt 的簽核
+create or replace function public.erp_has_approval(t text, ref text, amt numeric) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.approvals a where a.type = t and a.ref_id = ref and a.status = 'approved' and coalesce(a.amount, 0) >= amt - 0.01)
+$$;
+create or replace function public.erp_lines_total(lines jsonb) returns numeric
+language sql immutable set search_path = '' as $$
+  select coalesce(sum(coalesce((l ->> 'qty')::numeric, 0) * coalesce((l ->> 'price')::numeric, 0)), 0) from jsonb_array_elements(coalesce(lines, '[]'::jsonb)) l
+$$;
+
+-- 採購單：超過金額門檻要核准；進貨不能超過可超收比例
+create or replace function public.erp_po_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare cur public.purchase_orders; total numeric; bad text;
+begin
+  if public.erp_bypass() then return null; end if;
+  select * into cur from public.purchase_orders where id = new.id;
+  if not found then return null; end if;
+  select string_agg(l ->> 'item_id', '、') into bad from jsonb_array_elements(coalesce(cur.lines, '[]'::jsonb)) l
+    where coalesce((l ->> 'received')::numeric, 0) > coalesce((l ->> 'qty')::numeric, 0) * (1 + public.erp_num('receive_tolerance', 0.1)) + 0.0005;
+  if bad is not null then raise exception '採購單 % 進貨超過可超收比例', cur.no; end if;
+  if cur.status in ('pending', 'rejected', 'cancelled') then return null; end if;
+  total := public.erp_lines_total(cur.lines);
+  if total > public.erp_num('po_approval_amount', 50000) + 0.005
+     and (tg_op = 'INSERT' or old.status in ('pending', 'rejected') or total > public.erp_lines_total(old.lines) + 0.005)
+     and not public.erp_has_approval('po', cur.id, total) then
+    raise exception '採購單 % 金額 % 超過門檻，需要先核准', cur.no, round(total);
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_po_rules on public.purchase_orders;
+create constraint trigger erp_po_rules after insert or update on public.purchase_orders deferrable initially deferred for each row execute function public.erp_po_rules();
+
+-- 銷售訂單：低於最低售價、超過信用額度要核准
+create or replace function public.erp_so_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare cur public.sales_orders; total numeric; lim numeric; tax numeric; exposure numeric; low text;
+begin
+  if public.erp_bypass() then return null; end if;
+  select * into cur from public.sales_orders where id = new.id;
+  if not found or cur.status <> 'confirmed' then return null; end if;
+  if tg_op = 'UPDATE' and old.status not in ('pending', 'rejected') and cur.lines is not distinct from old.lines then return null; end if;
+  if public.erp_approved_now('so', cur.id) then return null; end if;
+  select string_agg(i.name, '、') into low from jsonb_array_elements(coalesce(cur.lines, '[]'::jsonb)) l
+    join public.items i on i.id = l ->> 'item_id'
+    where coalesce(i.min_price, 0) > 0 and coalesce((l ->> 'price')::numeric, 0) < i.min_price;
+  if low is not null then raise exception '訂單 % 的 % 低於最低售價，需要先核准', cur.no, low; end if;
+  total := public.erp_lines_total(cur.lines);
+  select credit_limit into lim from public.customers where id = cur.customer_id;
+  if coalesce(lim, 0) > 0 and not public.erp_has_approval('so', cur.id, total) then
+    tax := public.erp_num('tax_rate', 0.05);
+    select coalesce(sum(i.total - coalesce(i.paid, 0) - coalesce(i.credited, 0)), 0) into exposure from public.invoices i where i.customer_id = cur.customer_id;
+    exposure := exposure + coalesce((
+      select sum(greatest(0, s.total * (1 + tax) - coalesce((select sum(i.total) from public.invoices i where i.sales_order_id = s.id), 0)))
+      from public.sales_orders s where s.customer_id = cur.customer_id and s.status in ('confirmed', 'closed') and s.id <> cur.id), 0);
+    if exposure + total * (1 + tax) > lim + 0.5 then
+      raise exception '訂單 % 超過客戶信用額度（未收 % + 本單 % > 額度 %），需要先核准', cur.no, round(exposure), round(total * (1 + tax)), lim;
+    end if;
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_so_rules on public.sales_orders;
+create constraint trigger erp_so_rules after insert or update on public.sales_orders deferrable initially deferred for each row execute function public.erp_so_rules();
+
+-- 庫存：調整 / 盤差超過金額要核准；報廢要核准權；領料不能超過 BOM 用量的可超領比例
+create or replace function public.erp_move_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare v numeric; lim numeric := public.erp_num('adjust_approval_amount', 3000); wo public.work_orders; per numeric; got numeric;
+begin
+  if public.erp_bypass() then return null; end if;
+  if new.type = 'adjust' then
+    if new.ref_type = 'stocktakes' then
+      select coalesce(sum(abs(qty * coalesce(unit_cost, 0))), 0) into v from public.stock_moves where type = 'adjust' and ref_type = 'stocktakes' and ref_id = new.ref_id;
+      if round(v, 2) > lim + 0.005 and not public.erp_approved_now('stocktake', new.ref_id) then
+        raise exception '盤點差異金額 % 超過門檻，需要先核准', round(v);
+      end if;
+    elsif round(abs(new.qty * coalesce(new.unit_cost, 0)), 2) > lim + 0.005 and not public.erp_approved_now('adjust', new.item_id) then
+      raise exception '庫存調整金額 % 超過門檻，需要先核准', round(abs(new.qty * coalesce(new.unit_cost, 0)));
+    end if;
+  elsif new.type = 'scrap' then
+    if public.erp_level('qc') < 3 and public.erp_level('wms') < 3 then raise exception '報廢需要品管或倉儲的核准權'; end if;
+  elsif new.type = 'issue' and new.qty > 0 and new.ref_type = 'work_orders' then
+    select * into wo from public.work_orders where id = new.ref_id;
+    select (b ->> 'qty')::numeric into per from public.items i, jsonb_array_elements(coalesce(i.bom, '[]'::jsonb)) b
+      where i.id = wo.product_id and b ->> 'item_id' = new.item_id limit 1;
+    if per is null then raise exception '領料的品項不在工單 % 的 BOM 裡', wo.no; end if;
+    select coalesce(sum(qty) filter (where type = 'issue'), 0) - coalesce(sum(qty) filter (where type = 'return'), 0) into got
+      from public.stock_moves where ref_type = 'work_orders' and ref_id = wo.id and item_id = new.item_id and qty > 0;
+    if got > per * wo.plan_qty * (1 + public.erp_num('issue_tolerance', 0.2)) + 0.0005 then
+      raise exception '工單 % 領料超過 BOM 需求的可超領比例', wo.no;
+    end if;
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_move_rules on public.stock_moves;
+create constraint trigger erp_move_rules after insert on public.stock_moves deferrable initially deferred for each row execute function public.erp_move_rules();
+
+-- 銷貨退回：設定需要核准時，完成退貨要在同一個交易裡核准
+create or replace function public.erp_return_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare cur public.returns;
+begin
+  if public.erp_bypass() then return null; end if;
+  select * into cur from public.returns where id = new.id;
+  if not found or cur.kind <> 'sales' or cur.status <> 'done' then return null; end if;
+  if tg_op = 'UPDATE' and old.status = 'done' then return null; end if;
+  if public.erp_flag('return_needs_approval', true) and not public.erp_approved_now('sales_return', cur.id) then
+    raise exception '銷貨退回 % 需要先核准', cur.no;
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_return_rules on public.returns;
+create constraint trigger erp_return_rules after insert or update on public.returns deferrable initially deferred for each row execute function public.erp_return_rules();
+
+-- 門市：折扣超過上限、作廢交易要店長（或核准）
+create or replace function public.erp_pos_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare sub numeric;
+begin
+  if public.erp_bypass() then return null; end if;
+  if tg_op = 'INSERT' then
+    sub := public.erp_lines_total(new.lines);
+    if coalesce(new.discount, 0) > sub * public.erp_num('pos_max_discount', 0.1) + 0.001 and public.erp_level('pos') < 3 then
+      raise exception '折扣超過上限，需要店長操作';
+    end if;
+  elsif new.status = 'void' and old.status <> 'void' and public.erp_level('pos') < 3 and not public.erp_approved_now('pos_void', new.id) then
+    raise exception '作廢門市交易需要店長核准';
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_pos_rules on public.pos_sales;
+create constraint trigger erp_pos_rules after insert or update on public.pos_sales deferrable initially deferred for each row execute function public.erp_pos_rules();
+
+-- 品管：不合格 / 暫扣的批號改判合格要品管核准權（或核准）
+create or replace function public.erp_lot_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if public.erp_bypass() then return null; end if;
+  if new.qc_status = 'pass' and old.qc_status in ('fail', 'hold') and public.erp_level('qc') < 3 and not public.erp_approved_now('qc_release', new.id) then
+    raise exception '批號 % 改判合格需要品管主管核准', new.lot_no;
+  end if;
+  return null;
+end $$;
+drop trigger if exists erp_lot_rules on public.lots;
+create constraint trigger erp_lot_rules after update on public.lots deferrable initially deferred for each row execute function public.erp_lot_rules();
+
+-- 出貨：不能超出訂單數量
+create or replace function public.erp_ship_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare bad text;
+begin
+  if public.erp_bypass() or new.sales_order_id is null then return null; end if;
+  select string_agg(i.name, '、') into bad from (
+    select l ->> 'item_id' item_id, sum((l ->> 'qty')::numeric) q from public.shipments s, jsonb_array_elements(s.lines) l
+    where s.sales_order_id = new.sales_order_id group by 1
+  ) x
+  join public.items i on i.id = x.item_id
+  left join lateral (
+    select sum((ol ->> 'qty')::numeric) q from public.sales_orders so, jsonb_array_elements(so.lines) ol where so.id = new.sales_order_id and ol ->> 'item_id' = x.item_id
+  ) o on true
+  where x.q > coalesce(o.q, 0) + 0.0005;
+  if bad is not null then raise exception '出貨超出訂單數量：%', bad; end if;
+  return null;
+end $$;
+drop trigger if exists erp_ship_rules on public.shipments;
+create constraint trigger erp_ship_rules after insert or update on public.shipments deferrable initially deferred for each row execute function public.erp_ship_rules();
+
+-- 收付款：不能超過未收 / 未付金額
+create or replace function public.erp_payment_rules() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare paid numeric; due numeric; doc text;
+begin
+  if public.erp_bypass() then return null; end if;
+  if new.invoice_id is not null and new.invoice_id <> '' then
+    select coalesce(sum(amount), 0) into paid from public.payments where invoice_id = new.invoice_id and kind = 'in';
+    select total - coalesce(credited, 0), no into due, doc from public.invoices where id = new.invoice_id;
+  elsif new.bill_id is not null and new.bill_id <> '' then
+    select coalesce(sum(amount), 0) into paid from public.payments where bill_id = new.bill_id and kind = 'out';
+    select total - coalesce(credited, 0), no into due, doc from public.bills where id = new.bill_id;
+  else
+    return null;
+  end if;
+  if paid > coalesce(due, 0) + 0.01 then raise exception '% 收付款合計 % 超過應收付金額 %', doc, paid, due; end if;
+  return null;
+end $$;
+drop trigger if exists erp_payment_rules on public.payments;
+create constraint trigger erp_payment_rules after insert on public.payments deferrable initially deferred for each row execute function public.erp_payment_rules();
 
 -- ======================================================================
 -- 網頁寫入用的函式：一個動作的所有異動在同一個資料庫交易裡完成，任何一筆被拒絕就整批取消

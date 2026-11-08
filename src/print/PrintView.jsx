@@ -1,4 +1,5 @@
 // 列印頁：A4 單據、批號標籤、門市收據。用瀏覽器「列印」即可印出或存成 PDF。
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { currentUser } from '../db/store'
@@ -23,7 +24,7 @@ const Lines = ({ text }) => String(text ?? '').split('\n').map((t, i) => <div ke
 
 function A4({ f }) {
   return (
-    <div className={'pf-page' + ((f.rows?.length || 0) + L.sum(f.sections || [], (x) => x.rows.length) > 18 ? ' long' : '')}>
+    <div className="pf-page">
       <header className="pf-head">
         <div className="pf-company">
           <b>{L.getSetting('company_name')}</b>
@@ -32,7 +33,7 @@ function A4({ f }) {
         </div>
         <h1 className="pf-title">{f.title}</h1>
         <div className="pf-docno">
-          <div>單號 <b>{f.no}</b></div>
+          <div>{f.noLabel || '單號'} <b>{f.no}</b></div>
           <div>日期 {f.date}</div>
         </div>
       </header>
@@ -45,8 +46,9 @@ function A4({ f }) {
             </div>
           )}
           <dl className="pf-meta">
-            {(f.meta || []).map(([k, v]) => (
-              <div key={k}><dt>{k}</dt><dd>{v || ''}</dd></div>
+            {/* 補滿整列，格線才不會斷掉 */}
+            {[...(f.meta || []), ...Array((3 - ((f.meta || []).length % 3)) % 3).fill(['', ''])].map(([k, v], i) => (
+              <div key={i}><dt>{k}</dt><dd>{v ?? ''}</dd></div>
             ))}
           </dl>
         </section>
@@ -68,9 +70,13 @@ function A4({ f }) {
         <section key={s.title} className="pf-section">
           <h2>{s.title}</h2>
           <table className="pf-table">
-            <thead><tr>{s.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <thead><tr>{s.columns.map((c, i) => <th key={c} className={s.num?.includes(i) ? 'num' : undefined}>{c}</th>)}</tr></thead>
             <tbody>
-              {s.rows.map((r, i) => <tr key={i}>{['a', 'b', 'c', 'd'].map((k) => <td key={k}>{r[k]}</td>)}</tr>)}
+              {s.rows.map((r, i) => (
+                <tr key={i}>
+                  {(Array.isArray(r) ? r : ['a', 'b', 'c', 'd'].map((k) => r[k])).map((v, j) => <td key={j} className={s.num?.includes(j) ? 'num' : undefined}><Lines text={v} /></td>)}
+                </tr>
+              ))}
               {s.rows.length === 0 && <tr><td colSpan={s.columns.length} className="pf-empty">（無）</td></tr>}
             </tbody>
           </table>
@@ -105,25 +111,32 @@ function A4({ f }) {
 function Label({ f }) {
   return (
     <div className="pf-labels">
-      {Array.from({ length: f.copies }).map((_, i) => (
+      {(f.cards || Array.from({ length: f.copies }, () => f)).map((c, i) => (
         <div key={i} className="pf-label-card">
           <div className="pf-label-main">
             <b className="pf-label-name">{f.title}</b>
             <dl>
-              {f.meta.filter(([, v]) => v).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+              {c.meta.filter(([, v]) => v).map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
             </dl>
             <div className="pf-label-foot">{f.footer}</div>
           </div>
-          <QR text={f.qr} size={110} />
+          <QR text={c.qr} size={110} />
         </div>
       ))}
     </div>
   )
 }
 
+// 熱感紙是捲筒：紙寬 58mm，長度依內容（@page 不接受 auto，所以量出實際高度再設定）
 function Receipt({ f }) {
+  const ref = useRef(null)
+  const [mm, setMm] = useState(120)
+  useLayoutEffect(() => {
+    if (ref.current) setMm(Math.ceil((ref.current.scrollHeight * 25.4) / 96) + 2)
+  })
   return (
-    <div className="pf-receipt">
+    <div className="pf-receipt" ref={ref}>
+      <style>{`@page receipt { size: 58mm ${mm}mm; margin: 0; }`}</style>
       <b className="center">{f.title}</b>
       <div className="center">{L.getSetting('company_address')}</div>
       <div>{f.no}　{f.date}</div>

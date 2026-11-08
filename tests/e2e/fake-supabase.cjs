@@ -104,7 +104,13 @@ function start({ port, schemaFile, owners = [] }) {
       }
       const offset = Number(url.searchParams.get('offset') || 0)
       const limit = Number(url.searchParams.get('limit') || 1000)
-      const out = as(who, `select coalesce(json_agg(x), '[]'::json) from (select * from public.${m[2]} order by id offset ${offset} limit ${limit}) x;`)
+      // PostgREST 的排序參數：order=created_at.asc.nullsfirst,id.asc
+      const order = (url.searchParams.get('order') || 'id.asc').split(',').map((o) => {
+        const [col, dir = 'asc', nulls] = o.split('.')
+        if (!/^[a-z_]+$/.test(col)) throw new Error('bad order')
+        return `${col} ${dir === 'desc' ? 'desc' : 'asc'}${nulls === 'nullsfirst' ? ' nulls first' : nulls === 'nullslast' ? ' nulls last' : ''}`
+      })
+      const out = as(who, `select coalesce(json_agg(x), '[]'::json) from (select * from public.${m[2]} order by ${order.join(', ')} offset ${offset} limit ${limit}) x;`)
       return send(200, out || '[]')
     } catch (e) {
       return send(400, { code: e.code, message: e.message, details: null, hint: null })

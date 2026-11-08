@@ -1,6 +1,6 @@
 import { all, currentUser } from '../db/store'
 import * as L from '../logic'
-import { Table, Badge, Tabs, useTab, money, dt, partyName, DocLink, attempt, ask } from '../ui'
+import { Table, Badge, Tabs, useTab, money, dt, partyName, DocLink, attempt, ask, PrintButton } from '../ui'
 
 export default function Approvals() {
   const [tab, setTab] = useTab('mine')
@@ -31,7 +31,7 @@ export default function Approvals() {
           empty={tab === 'mine' ? '沒有待你核准的單據 👍' : '沒有資料'}
           rows={rows}
           columns={[
-            { h: '單號', r: (a) => a.no },
+            { h: '單號', r: (a) => <span className="nowrap">{a.no} <PrintButton sm type="approval" id={a.id} label="簽核單" /></span> },
             { h: '類型', r: (a) => <Badge kind="info">{L.APPROVAL_TYPES[a.type]}</Badge> },
             { h: '內容', r: (a) => (a.ref_table && a.ref_table !== 'items' ? <DocLink t={a.ref_table} id={a.ref_id}>{a.summary}</DocLink> : a.summary) },
             { h: '原因', r: (a) => <span className="small">{a.reason}</span> },

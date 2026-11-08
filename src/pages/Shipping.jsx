@@ -120,6 +120,7 @@ function SlipModal({ id, onClose }) {
         {!inv && (L.can('accounting', 2) || L.can('shipping', 2)) && <button className="btn primary" onClick={() => attempt(() => L.invoiceShipment(s.id), '已開立發票與應收帳款')}>開立發票 / 應收</button>}
         <PrintButton type="shipment" id={s.id} label="出貨單" />
         <PrintButton type="pick_list" id={s.id} label="揀貨單" />
+        <PrintButton type="ship_label" id={s.id} label={`嘜頭 ${s.boxes || 1} 張`} />
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>關閉</button>
       </>}>

@@ -157,4 +157,71 @@ describe.skipIf(!hasPostgres)('雲端資料庫權限（PostgreSQL）', () => {
     pg.psql(asUser(OWNER, `select public.erp_restore('items', ${dollar(JSON.stringify(items))}::jsonb, true);`))
     expect(q(OWNER, 'select count(*) from public.items;')).toBe(n)
   })
+
+  describe('簽核門檻與數量上限（伺服器端）', () => {
+    const item = (code) => all('items').find((i) => i.code === code)
+    const sup = () => all('suppliers')[0]
+    const now = () => new Date().toISOString()
+
+    it('採購單超過金額門檻不能直接開立；核准後可以', () => {
+      const big = row('purchase_orders', { no: 'PO-BIG', supplier_id: sup().id, status: 'open', lines: [{ item_id: item('R001').id, qty: 1000, price: 160 }] })
+      expect(fails(uids['吳採購'], [big])).toMatch(/超過門檻，需要先核准/)
+      expect(fails(uids['吳採購'], [{ ...big, row: { ...big.row, status: 'pending' } }])).toBe('')
+      // 示範資料裡等待核准的大額採購：廠長核准（核准與採購單狀態同一批）
+      const ap = all('approvals').find((a) => a.type === 'po' && a.status === 'pending')
+      const po = all('purchase_orders').find((p) => p.id === ap.ref_id)
+      const approve = { t: 'approvals', op: 'update', row: { ...ap, status: 'approved', decided_by: user('劉廠長').id, decided_at: now() } }
+      expect(fails(uids['劉廠長'], [{ t: 'purchase_orders', op: 'update', row: { ...po, status: 'open', approved_total: po.total } }, approve])).toBe('')
+    })
+
+    it('進貨不能超過採購量的可超收比例', () => {
+      const po = all('purchase_orders').find((p) => p.status === 'received')
+      const lines = po.lines.map((l, i) => (i ? l : { ...l, received: l.qty * 1.5 }))
+      expect(fails(uids['吳採購'], [{ t: 'purchase_orders', op: 'update', row: { ...po, lines } }])).toMatch(/超收/)
+    })
+
+    it('訂單低於最低售價、超過信用額度不能直接確認', () => {
+      const f1 = item('F001')
+      const c2 = all('customers').find((c) => c.code === 'C002')
+      const c3 = all('customers').find((c) => c.code === 'C003')
+      expect(fails(uids['陳業務'], [row('sales_orders', { no: 'SO-LOW', customer_id: c2.id, status: 'confirmed', lines: [{ item_id: f1.id, qty: 1, price: f1.min_price - 1 }] })])).toMatch(/低於最低售價/)
+      expect(fails(uids['陳業務'], [row('sales_orders', { no: 'SO-CREDIT', customer_id: c3.id, status: 'confirmed', lines: [{ item_id: f1.id, qty: 300, price: 120 }] })])).toMatch(/信用額度/)
+      expect(fails(uids['陳業務'], [row('sales_orders', { no: 'SO-OK', customer_id: c2.id, status: 'confirmed', lines: [{ item_id: f1.id, qty: 10, price: 120 }] })])).toBe('')
+    })
+
+    it('庫存調整超過金額門檻要核准；核准後同一批執行可以', () => {
+      const ap = all('approvals').find((a) => a.type === 'adjust' && a.status === 'pending')
+      const p = ap.payload
+      const move = row('stock_moves', { item_id: p.item_id, lot_no: p.lot_no, bin_id: p.bin_id, qty: p.qty, type: 'adjust', unit_cost: 165, ref_type: 'adjust', date: now(), doc_date: L.today() })
+      expect(fails(uids['張師傅'], [move])).toMatch(/庫存調整金額 .* 超過門檻/)
+      const approve = { t: 'approvals', op: 'update', row: { ...ap, status: 'approved', decided_by: user('劉廠長').id, decided_at: now() } }
+      expect(fails(uids['劉廠長'], [move, approve])).toBe('')
+      const small = row('stock_moves', { item_id: p.item_id, lot_no: p.lot_no, bin_id: p.bin_id, qty: -1, type: 'adjust', unit_cost: 165, ref_type: 'adjust', date: now(), doc_date: L.today() })
+      expect(fails(uids['張師傅'], [small])).toBe('')
+    })
+
+    it('報廢要核准權；領料不能超過 BOM 需求', () => {
+      const m = all('stock_moves').find((x) => x.qty > 0 && x.type === 'receive')
+      expect(fails(uids['張師傅'], [row('stock_moves', { item_id: m.item_id, lot_no: m.lot_no, bin_id: m.bin_id, qty: -1, type: 'scrap', unit_cost: 1, date: now() })])).toMatch(/報廢需要/)
+      const wo = all('work_orders').find((w) => w.status === 'planned' && w.product_id === item('F003').id)
+      const line = all('bins').find((b) => b.code === 'LINE-1')
+      const over = row('stock_moves', { item_id: item('R002').id, lot_no: 'X', bin_id: line.id, qty: 500, type: 'issue', unit_cost: 1, ref_type: 'work_orders', ref_id: wo.id, date: now() })
+      expect(fails(uids['張師傅'], [over])).toMatch(/領料超過 BOM/)
+      expect(fails(uids['張師傅'], [{ ...over, row: { ...over.row, item_id: item('R003').id, qty: 1 } }])).toMatch(/不在工單 .* 的 BOM/)
+    })
+
+    it('銷貨退回、門市大折扣、作廢、QC 改判、超量出貨、超額收款都會被擋', () => {
+      const sh = all('shipments')[0]
+      expect(fails(uids['陳業務'], [row('returns', { no: 'SR-X', kind: 'sales', shipment_id: sh.id, status: 'done', lines: [] })])).toMatch(/銷貨退回 .* 需要先核准/)
+      expect(fails(uids['小美'], [row('pos_sales', { no: 'POS-X', status: 'done', discount: 50, total: 50, lines: [{ item_id: item('F002').id, qty: 1, price: 100 }] })])).toMatch(/折扣超過上限/)
+      const sale = all('pos_sales').find((x) => x.status === 'done')
+      expect(fails(uids['小美'], [{ t: 'pos_sales', op: 'update', row: { ...sale, status: 'void' } }])).toMatch(/作廢門市交易需要店長/)
+      const bad = all('lots').find((l) => l.qc_status === 'fail')
+      expect(fails(uids['張師傅'], [{ t: 'lots', op: 'update', row: { ...bad, qc_status: 'pass' } }])).toMatch(/改判合格需要品管主管/)
+      const so = all('sales_orders').find((o) => o.id === sh.sales_order_id)
+      expect(fails(uids['張師傅'], [row('shipments', { no: 'SH-X', sales_order_id: so.id, customer_id: so.customer_id, lines: [{ item_id: so.lines[0].item_id, qty: so.lines[0].qty * 10 }] })])).toMatch(/出貨超出訂單/)
+      const inv = all('invoices')[0]
+      expect(fails(uids['林會計'], [row('payments', { no: 'RV-X', kind: 'in', invoice_id: inv.id, amount: inv.total * 3, date: L.today() })])).toMatch(/超過應收付金額/)
+    })
+  })
 })

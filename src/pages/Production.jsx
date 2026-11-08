@@ -26,6 +26,7 @@ export function Production() {
           <option value="closed">已結束</option>
           <option value="all">全部</option>
         </select>
+        <PrintButton type="production_daily" id={L.today()} label="今日生產日報" />
         {canEdit && <button className="btn primary" onClick={() => setCreate({ sales_order_id: '', product_id: '', plan_qty: '', plan_date: L.addDays(L.today(), 1), line: L.getSetting('lines')?.[0]?.name })}>＋ 開工單</button>}
       </div>
       <div className="card">

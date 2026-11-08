@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { all, get, where } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Select, Check, Table, Badge, Tabs, Search, matches, money, qty, itemName, itemUnit, itemOptions, binOptions, attempt, ask, toast } from '../ui'
+import { Modal, Field, Input, Select, Check, Table, Badge, Tabs, Search, matches, money, qty, itemName, itemUnit, itemOptions, binOptions, attempt, ask, toast, PrintButton } from '../ui'
 
 export const ITEM_TYPES = L.ITEM_TYPES
 const TYPE_BADGE = { product: 'primary', semi: 'info', raw: '', pack: '' }
@@ -145,6 +145,7 @@ export function Items() {
               </div>
             )}
             {tab === 'tree' && made && <BomTree item={edit} />}
+            {(tab === 'bom' || tab === 'tree') && made && edit.id && <div className="row"><PrintButton type="bom" id={edit.id} label="BOM 表" /></div>}
             {tab === 'used' && edit.id && (
               <Table empty="沒有被其他品項使用" rows={L.whereUsed(edit.id)} columns={[
                 { h: '層級', r: (u) => (u.level ? `間接（第 ${u.level + 1} 層）` : '直接') },

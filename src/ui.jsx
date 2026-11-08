@@ -49,7 +49,7 @@ export function Toasts() {
 export function attempt(fn, okMsg) {
   try {
     const r = fn()
-    if (r?.pending) toast('已送出簽核，等主管核准後生效')
+    if (r?.pending || r?.status === 'pending') toast('已送出簽核，等主管核准後生效')
     else if (okMsg) toast(okMsg)
     return r ?? true
   } catch (e) {

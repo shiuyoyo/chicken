@@ -15,6 +15,8 @@ export default function Wms() {
       <div className="page-head">
         <h1 className="grow">倉儲管理</h1>
         <span className="muted">庫存總值 <b>{money(total)}</b></span>
+        <PrintButton type="stock_report" id="all" label="庫存明細表" />
+        <PrintButton type="expiry" id={String(L.getSetting('expiry_warn_days'))} label="效期預警表" />
         {canEdit && <button className="btn" onClick={() => setTr({ from_bin_id: '', to_bin_id: '', lines: [{ item_id: '', lot_no: '', qty: '' }], reason: '' })}>調撥 / 補貨到門市</button>}
         {canEdit && <button className="btn" onClick={() => setAdj({ item_id: '', bin_id: '', lot_no: '', qty: '', reason: '' })}>庫存調整</button>}
       </div>

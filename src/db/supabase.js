@@ -93,7 +93,7 @@ export function supabaseBackend(cfg, { sb = supabaseClient(cfg), onRejected } = 
       for (const t of tables) {
         const rows = []
         for (let from = 0; ; from += PAGE) {
-          const { data: page, error } = await sb.from(t).select('*').order('id').range(from, from + PAGE - 1)
+          const { data: page, error } = await sb.from(t).select('*').order('created_at', { ascending: true, nullsFirst: true }).order('id').range(from, from + PAGE - 1)
           if (error) throw new Error(`讀取 ${SCHEMA[t]?.label || t} 失敗：${friendlyError(error.message)}`)
           rows.push(...page)
           if (page.length < PAGE) break

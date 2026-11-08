@@ -72,4 +72,45 @@ describe('表單列印', () => {
     const col = f.columns.find((c) => c.h === '實盤數')
     expect(f.rows.every((r) => col.r(r) === '')).toBe(true)
   })
+
+  it('簽核單：列出申請人、相關單據明細與狀態', () => {
+    const ap = all('approvals').find((a) => a.type === 'po')
+    const f = FORMS.approval.build(ap.id)
+    const meta = Object.fromEntries(f.meta)
+    expect(meta['申請人']).toBe('吳採購')
+    expect(meta['相關單據']).toMatch(/^PO/)
+    expect(f.sections[0].rows.length).toBeGreaterThan(0)
+    expect(f.signatures).toContain('核准人')
+    const st = all('approvals').find((a) => a.type === 'stocktake' || a.type === 'adjust')
+    expect(FORMS.approval.build(st.id).sections[0].rows.length).toBeGreaterThan(0)
+  })
+
+  it('BOM 表：多階展開、批量成本 = 標準成本 × 批量', () => {
+    const gift = byCode('items', 'G001')
+    const f = FORMS.bom.build(gift.id, { qty: 10 })
+    expect(f.rows.some((r) => r.level === 1)).toBe(true)
+    expect(Object.fromEntries(f.meta)['階數']).toBe(2)
+    expect(Number(f.totals[1][1].replace(/,/g, ''))).toBeCloseTo(L.bomCost(gift.id) * 10, 1)
+    const firstLevel = L.sum(f.rows.filter((r) => r.level === 0), (r) => Number(String(f.columns[8].r(r)).replace(/,/g, '')))
+    expect(Math.abs(firstLevel - L.bomCost(gift.id) * 10)).toBeLessThan(0.05)
+  })
+
+  it('試算表借貸平衡；帳齡表合計 = 應收未收；庫存明細表合計 = 存貨評價', () => {
+    const tb = FORMS.trial_balance.build(L.today().slice(0, 7))
+    expect(tb.totals[0][1]).toBe(tb.totals[1][1])
+    const ar = FORMS.aging.build('ar')
+    const open = L.sum(all('invoices'), (i) => (Math.abs(L.invoiceBalance(i)) < 0.5 ? 0 : L.invoiceBalance(i)))
+    expect(ar.totals.at(-1)[1]).toBe(Math.round(open).toLocaleString())
+    const st = FORMS.stock_report.build('all')
+    expect(st.totals[0][1]).toBe(Math.round(L.sum(L.inventoryValuation().rows, (r) => r.value)).toLocaleString())
+    const pl = FORMS.income_statement.build(L.today().slice(0, 7))
+    expect(pl.rows.at(-1).v).toBe(L.profitAndLoss(...[L.today().slice(0, 7) + '-01', pl.date]).net)
+  })
+
+  it('出貨嘜頭：每一箱一張，箱號 1/n ～ n/n', () => {
+    const sh = all('shipments').find((s) => s.boxes > 1)
+    const f = FORMS.ship_label.build(sh.id)
+    expect(f.cards).toHaveLength(Math.min(100, sh.boxes))
+    expect(Object.fromEntries(f.cards.at(-1).meta)['箱號']).toBe(`${f.cards.length} / ${f.cards.length}`)
+  })
 })

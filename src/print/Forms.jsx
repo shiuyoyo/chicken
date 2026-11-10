@@ -6,14 +6,14 @@ import { PrintButton, Search, matches } from '../ui'
 
 const GROUPS = [
   ['簽核', ['approval']],
-  ['業務', ['quotation', 'sales_order', 'return', 'price_list']],
+  ['業務', ['quotation', 'sales_order', 'return', 'price_list', 'sales_performance']],
   ['採購', ['requisition', 'purchase_order']],
   ['生產', ['bom', 'work_order', 'production_daily']],
   ['倉儲', ['doc', 'transfer', 'stocktake', 'label', 'stock_report', 'expiry']],
   ['品管 / 追溯', ['inspection', 'trace']],
   ['出貨', ['pick_list', 'shipment', 'ship_label']],
   ['財務', ['invoice', 'statement', 'payment', 'journal', 'aging', 'trial_balance', 'income_statement']],
-  ['門市', ['pos_receipt']],
+  ['門市 / 發票', ['pos_receipt', 'einvoice']],
   ['主檔', ['master_list']],
 ]
 

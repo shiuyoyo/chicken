@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['tests/{seed,rules,close,notify,forms,bom}.test.js'],
+    include: ['tests/{seed,rules,close,notify,forms,bom,retail}.test.js'],
     setupFiles: ['tests/replay/setup.js'],
     testTimeout: 120000,
     hookTimeout: 120000,

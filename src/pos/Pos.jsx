@@ -1,14 +1,17 @@
 // 門市收銀台：觸控優先。只顯示門市儲位有庫存（QC 合格、未過期）的品項。
 import { useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { get, currentUser } from '../db/store'
+import { get, currentUser, getPref, setPref, useStore } from '../db/store'
 import * as L from '../logic'
-import { Modal, Field, Input, Table, Badge, money, qty, dt, itemName, attempt, ask, toast, PrintButton } from '../ui'
+import SyncStatus from '../cloud/SyncStatus'
+import { Modal, Field, Input, Table, Badge, money, qty, dt, itemName, attempt, ask, toast, PrintButton, ScanBox, useScanner } from '../ui'
 
 export default function Pos() {
   const nav = useNavigate()
   const bins = L.storeBins()
-  const [binId, setBinId] = useState(bins[0]?.id || '')
+  useStore()
+  const [binId, setBinId] = useState(getPref('posBin', '') && bins.some((b) => b.id === getPref('posBin')) ? getPref('posBin') : bins[0]?.id || '')
+  const device = L.posDevice()
   const shift = L.openShift(binId)
   if (!bins.length) return <div className="content"><h1>尚未設定門市儲位</h1><p>請到倉儲管理新增一個「門市」類型的倉庫與儲位。</p></div>
   return (
@@ -17,10 +20,15 @@ export default function Pos() {
         <button onClick={() => nav('/')} aria-label="回後台">←</button>
         <h1>🛍️ {L.binLabel(binId)}</h1>
         {bins.length > 1 && (
-          <select value={binId} onChange={(e) => setBinId(e.target.value)} aria-label="門市">
+          <select value={binId} onChange={(e) => { setBinId(e.target.value); setPref('posBin', e.target.value) }} aria-label="門市">
             {bins.map((b) => <option key={b.id} value={b.id}>{L.binLabel(b.id)}</option>)}
           </select>
         )}
+        <select value={device} onChange={(e) => setPref('posDevice', e.target.value)} aria-label="收銀機代號" title="展場有多台收銀機時，每台設不同代號">
+          <option value="">單機</option>
+          {'ABCDEFGH'.split('').map((c) => <option key={c} value={c}>收銀機 {c}</option>)}
+        </select>
+        <SyncStatus />
         <span className="pos-user">{currentUser().name}{shift ? `｜${shift.no}` : ''}</span>
       </header>
       {shift ? <Register shift={shift} /> : <OpenShift binId={binId} />}
@@ -45,6 +53,7 @@ function OpenShift({ binId }) {
 function Register({ shift }) {
   const [cart, setCart] = useState([])
   const [member, setMember] = useState(null)
+  const [taxId, setTaxId] = useState('')
   const [discount, setDiscount] = useState(0)
   const [method, setMethod] = useState('現金')
   const [received, setReceived] = useState('')
@@ -59,18 +68,27 @@ function Register({ shift }) {
     if (next > avail) return toast(`門市只剩 ${avail}`, 'bad')
     setCart(next <= 0 ? cart.filter((c) => c.item_id !== id) : cart.some((c) => c.item_id === id) ? cart.map((c) => (c.item_id === id ? { ...c, qty: next } : c)) : [...cart, { item_id: id, qty: next }])
   }
-  const price = (id) => Number(get('items', id)?.pos_price || 0)
+  // 掃描槍：嗶一下加一件（不用先點輸入框）
+  const scan = (code) => {
+    const it = L.itemByCode(code)
+    if (!it) return toast(`找不到條碼「${code}」`, 'bad')
+    if (!cat.some((c) => c.item.id === it.id)) return toast(`${it.name} 門市沒有庫存或沒開放販售`, 'bad')
+    add(it.id)
+  }
+  useScanner(scan, !receipt)
+  const price = (id) => L.posPrice(id)
   const subtotal = L.sum(cart, (c) => c.qty * price(c.item_id))
   const total = Math.max(0, subtotal - (Number(discount) || 0))
   const change = method === '現金' && received !== '' ? Number(received) - total : 0
   const checkout = () => {
-    const sale = attempt(() => L.posCheckout({ shift_id: shift.id, cart, discount, method, received: method === '現金' ? (received === '' ? total : received) : undefined, customer_id: member?.id || '' }))
+    const sale = attempt(() => L.posCheckout({ shift_id: shift.id, cart, discount, method, received: method === '現金' ? (received === '' ? total : received) : undefined, customer_id: member?.id || '', buyer_tax_id: taxId }))
     if (sale) {
       setReceipt(sale)
       setCart([])
       setDiscount(0)
       setReceived('')
       setMember(null)
+      setTaxId('')
       setShowCart(false)
     }
   }
@@ -89,15 +107,16 @@ function Register({ shift }) {
     <div className="pos-body">
       <section className="pos-products" aria-label="商品">
         {cat.length === 0 && <div className="empty">門市沒有可賣的商品。請店長到「倉儲管理 → 調撥 / 補貨到門市」補貨。</div>}
-        {cat.map(({ item, price: p, avail }) => (
+        {cat.map(({ item, price: p, base, avail }) => (
           <button key={item.id} className={'pos-tile' + (inCart(item.id) ? ' in' : '')} onClick={() => add(item.id)}>
             <b>{item.name}</b>
-            <span className="pos-price">{money(p)}</span>
+            <span className="pos-price">{base > p && <s className="small muted">{money(base)}</s>} {money(p)}</span>
             <span className="small">剩 {qty(avail - inCart(item.id))} {item.unit}</span>
             {inCart(item.id) > 0 && <span className="pos-badge">{inCart(item.id)}</span>}
           </button>
         ))}
         <div className="pos-tools">
+          <div style={{ flex: '1 1 260px' }}><ScanBox onCode={scan} autoFocus={false} placeholder="掃描商品條碼（直接嗶也可以）" /></div>
           <button className="btn" onClick={() => setPanel('sales')}>今日交易 / 作廢</button>
           <button className="btn" onClick={() => setPanel('close')}>日結</button>
         </div>
@@ -134,6 +153,7 @@ function Register({ shift }) {
         </div>
         {method === '現金' && (
           <div className="stack" style={{ gap: 8 }}>
+            <div className="pos-row"><span>買方統編</span><Input inputMode="numeric" value={taxId} placeholder="選填（8 碼）" onChange={(v) => setTaxId(v.replace(/\D/g, '').slice(0, 8))} style={{ width: 120 }} aria-label="買方統編" /></div>
             <div className="pos-row"><span>收現</span><Input type="number" value={received} placeholder={String(total)} onChange={setReceived} style={{ width: 120 }} aria-label="收現金額" /></div>
             <div className="pos-quick">{[total, 100, 500, 1000].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => <button key={v} onClick={() => setReceived(v)}>{v === total ? '剛好' : money(v)}</button>)}</div>
             {received !== '' && <div className={'pos-row ' + (change < 0 ? 'tone-bad' : '')}><span>找零</span><b>{money(change)}</b></div>}
@@ -142,7 +162,7 @@ function Register({ shift }) {
         <button className="big-btn ok" disabled={!cart.length || (method === '現金' && received !== '' && change < 0)} onClick={checkout}>結帳 {money(total)}</button>
       </section>
       {receipt && (
-        <Modal title="交易完成" onClose={() => setReceipt(null)} footer={<><PrintButton type="pos_receipt" id={receipt.id} label="印收據" /><button className="btn primary" onClick={() => setReceipt(null)}>下一位客人</button></>}>
+        <Modal title="交易完成" onClose={() => setReceipt(null)} footer={<><PrintButton type="einvoice" id={`pos_sales:${receipt.id}`} label="印發票" /><PrintButton type="pos_receipt" id={receipt.id} label="印收據" /><button className="btn primary" onClick={() => setReceipt(null)}>下一位客人</button></>}>
           <div className="receipt">
             <div className="center"><b>{L.getSetting('company_name')}</b></div>
             <div className="center small">電子發票 {receipt.gui_no}</div>
@@ -197,6 +217,7 @@ function ClosePanel({ shift, onClose }) {
           {Object.entries(s.byMethod).map(([m, v]) => <Fragment key={m}><dt>{m}</dt><dd>{money(v)}</dd></Fragment>)}
           <dt>零用金</dt><dd>{money(shift.opening_cash)}</dd>
           <dt>抽屜應有現金</dt><dd><b>{money(s.expected)}</b></dd>
+          {L.unusedGui(shift) && <><dt>未使用發票</dt><dd>{L.unusedGui(shift).from}～{L.unusedGui(shift).to}（{L.unusedGui(shift).count} 張，需申報空白發票）</dd></>}
         </dl>
         <Field label="實際點收現金"><Input type="number" value={counted} onChange={setCounted} autoFocus /></Field>
         {diff !== null && <div className={diff ? 'notice warn' : 'notice ok'}>{diff === 0 ? '✓ 現金相符' : `現金${diff > 0 ? '多' : '少'} ${money(Math.abs(diff))}，會記入「現金短溢」`}</div>}

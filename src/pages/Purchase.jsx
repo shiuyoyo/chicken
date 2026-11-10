@@ -93,7 +93,7 @@ export function PurchaseOrders() {
               <Field label="採購日"><Input type="date" value={edit.date} onChange={(v) => setEdit({ ...edit, date: v })} /></Field>
               <Field label="預計到貨"><Input type="date" value={edit.due_date} onChange={(v) => setEdit({ ...edit, due_date: v })} /></Field>
             </div>
-            <LineEditor lines={edit.lines} types={['raw', 'pack']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.lastCost(id)} />
+            <LineEditor scan lines={edit.lines} types={['raw', 'pack']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.lastCost(id)} />
             <Field label="備註"><textarea className="input" value={edit.note || ''} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
           </div>
         </Modal>

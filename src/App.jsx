@@ -28,6 +28,8 @@ import Forms from './print/Forms'
 import PrintView from './print/PrintView'
 import Pos from './pos/Pos'
 import Simple from './simple/Simple'
+import QuickSale from './pages/QuickSale'
+import SyncStatus from './cloud/SyncStatus'
 
 // [路徑, 圖示, 名稱, 權限模組, 元件]
 const NAV = [
@@ -40,10 +42,11 @@ const NAV = [
     ['/customers', '🏪', '客戶', 'crm', Customers],
     ['/crm', '📇', '業務活動與商機', 'crm', CrmWork],
     ['/quotes', '📝', '報價單', 'crm', Quotations],
-    ['/price-lists', '🏷️', '價格表', 'crm', PriceLists],
+    ['/price-lists', '🏷️', '價格表與促銷', 'crm', PriceLists],
   ]],
   ['銷售', [
     ['/sales', '🧾', '銷售訂單', 'sales', SalesOrders],
+    ['/quick-sale', '📟', '掃碼銷貨', 'sales', QuickSale],
     ['/returns', '↩️', '退貨', 'sales', Returns],
   ]],
   ['採購', [
@@ -135,6 +138,7 @@ function Shell() {
           </button>
           <b className="hide-sm">{title}</b>
           <span className="spacer" />
+          <SyncStatus />
           {myApprovals > 0 && (
             <Link to="/approvals" className="badge warn" title="待我核准">
               待簽 {myApprovals}

@@ -306,6 +306,15 @@ async function seedDemoData() {
     L.recordExpense({ account: 6400, amount: 28000, date: d(-20), memo: '廠房租金' })
   })
 
+  // ---------- 促銷活動與業績目標 ----------
+  // 中秋檔期：禮盒、麻辣雞丁特價（麻辣雞丁批發活動價低於最低售價，活動期間不用另外簽核）
+  as('黃經理', () => L.savePromotion({
+    name: '中秋檔期特價', start_date: d(-3), end_date: d(7), discount_pct: 0, customer_level: '',
+    lines: [{ item_id: gift.id, price: 620, pos_price: 699 }, { item_id: mala.id, price: 115, pos_price: 149 }], note: '展覽、門市、通路同步',
+  }))
+  as('黃經理', () => L.savePromotion({ name: '週年慶（下個月）', start_date: d(20), end_date: d(30), discount_pct: 10, lines: [{ item_id: sanbei.id }, { item_id: mayou.id }] }))
+  as('黃經理', () => L.saveSalesTargets({ [U.陳業務]: 60000, [U.黃經理]: 80000 }))
+
   // 示範資料產生的通知只供預覽，切到雲端後不會真的送出
   for (const n of all('notifications')) update('notifications', n.id, { status: 'demo' })
   setPref('userId', '')

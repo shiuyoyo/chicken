@@ -41,6 +41,8 @@ export const SETTING_DEFAULTS = {
   gui_prefix: 'AB', // 發票字軌
   gui_next: 10000001, // 下一張發票號碼
   app_url: '', // 系統網址（通知訊息裡的「開啟系統」連結）
+  pos_gui_block: 100, // 收銀機開班時保留幾個發票號碼（離線也能開發票）
+  einvoice_aes_key: '', // 電子發票 QR Code 加密金鑰（財政部核發的 32 碼 16 進位）
   lines: [
     { name: '一號蒸煮鍋', capacity: 500 },
     { name: '二號炒鍋', capacity: 300 },
@@ -65,6 +67,8 @@ export const SETTING_LABELS = {
   gui_prefix: '發票字軌',
   gui_next: '下一張發票號碼',
   app_url: '系統網址（通知連結用）',
+  einvoice_aes_key: '電子發票 QR Code 金鑰（32 碼）',
+  pos_gui_block: '收銀機每班保留發票號碼數',
 }
 
 export function getSetting(key) {

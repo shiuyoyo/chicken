@@ -6,7 +6,8 @@ import {
 } from './core'
 import { notify } from './notify'
 import { allocate, move, lotByNo, lotCost, quarantineBin, binOf } from './inventory'
-import { invoiceBalance } from './sales'
+import { invoiceBalance, saveSalesOrder } from './sales'
+import { newRandomCode } from './einvoice'
 
 export const PACK_MODES = ['紙箱', '保冷箱', '棧板', '冷凍貨櫃', '散裝']
 export const SHIP_STATUS = { shipped: '已出貨', delivered: '已送達' }
@@ -88,7 +89,7 @@ export function invoiceShipment(shipmentId, { date } = {}) {
     const cust = get('customers', sh.customer_id)
     const inv = insert('invoices', {
       no: nextNo('invoices', 'AR', date), gui_no: nextGui(), customer_id: sh.customer_id, sales_order_id: sh.sales_order_id, shipment_id: sh.id, date,
-      due_date: addDays(date, cust?.terms_days ?? 30), amount, tax, total: round(amount + tax), paid: 0, credited: 0, status: 'unpaid',
+      due_date: addDays(date, cust?.terms_days ?? 30), amount, tax, total: round(amount + tax), paid: 0, credited: 0, status: 'unpaid', random_code: newRandomCode(),
     })
     postJournal({ date, memo: `銷貨 ${cust?.name} ${sh.no} 發票 ${inv.gui_no}`, lines: [{ account: 1200, debit: amount + tax }, { account: 4100, credit: amount }, { account: 2200, credit: tax }], ref_type: 'invoices', ref_id: inv.id })
     return inv
@@ -161,3 +162,26 @@ registerApproval('sales_return', {
 })
 
 export { binOf, lotByNo }
+
+// ---------- 掃碼銷貨：掃描槍嗶完產品，一次完成訂單 → 出貨（銷貨單）→ 應收 / 發票 ----------
+// 條碼或料號都可以；找不到回傳 undefined
+export const itemByCode = (code) => {
+  const c = String(code || '').trim()
+  if (!c) return undefined
+  return where('items', (i) => i.active !== false && (i.barcode === c || i.code === c || i.code === c.toUpperCase()))[0]
+}
+
+// lines: [{ item_id, qty, price? }]；需要簽核（超過信用額度、低於底價）時只建立訂單，等核准後再出貨
+export function quickSale({ customer_id, lines, pack_mode = '紙箱', invoice = true, note = '', date = today() }) {
+  return transaction(() => {
+    need('sales', 2)
+    need('shipping', 2)
+    const valid = lines.filter((l) => l.item_id && Number(l.qty) > 0)
+    if (!valid.length) fail('還沒有掃描任何商品')
+    const so = saveSalesOrder({ customer_id, date, due_date: date, lines: valid, note: note || '掃碼銷貨' })
+    if (so.status !== 'confirmed') return { so, pending: true }
+    const shipment = shipGoods({ sales_order_id: so.id, lines: valid.map((l) => ({ item_id: l.item_id, qty: l.qty })), pack_mode, date })
+    const inv = invoice ? invoiceShipment(shipment.id, { date }) : null
+    return { so: get('sales_orders', so.id), shipment, invoice: inv, pending: false }
+  })
+}

@@ -1,9 +1,9 @@
 // 雲端版入口：Email + 密碼登入（Supabase Auth），登入後才載入資料。
 // 第一次使用（資料庫是空的）時，系統擁有者可以載入示範資料、上傳這台裝置的本機資料，或從空白開始。
 import { useEffect, useState } from 'react'
-import { initStore, importAll, currentBackend, setPref, all, insert, update, transaction } from '../db/store'
+import { initStore, importAll, currentBackend, setPref, getPref, all, insert, update, transaction, reloadAll } from '../db/store'
 import { readLocalData } from '../db/local'
-import { supabaseClient, friendlyError } from '../db/supabase'
+import { supabaseClient, friendlyError, isNetworkError } from '../db/supabase'
 import { seedDemo } from '../db/seed'
 import { MODULES } from '../logic'
 import App from '../App'
@@ -20,8 +20,19 @@ export default function CloudGate() {
     setPhase('loading')
     setErr('')
     try {
-      const { data: w, error } = await sb.rpc('erp_whoami')
+      // supabase 的查詢物件只能 await（沒有 .catch），網路錯誤用 try 接
+      let w, error
+      if (navigator.onLine === false && getPref('cloudWho')) error = new TypeError('Failed to fetch')
+      else
+        try {
+          ;({ data: w, error } = await sb.rpc('erp_whoami'))
+        } catch (e) {
+          error = e
+        }
+      // 斷線（例如展場）：用這台裝置上次登入時的身分繼續
+      if (error && isNetworkError(error) && getPref('cloudWho')) ({ data: w, error } = { data: getPref('cloudWho'), error: null })
       if (error) throw new Error(/erp_whoami/.test(error.message) ? '雲端資料庫還沒有建立資料表，請先在 Supabase 的 SQL Editor 執行 supabase/schema.sql' : friendlyError(error.message))
+      setPref('cloudWho', w)
       setWho(w)
       if (!w.owner && !w.user_id) return setPhase('pending')
       const empty = await initStore()
@@ -46,6 +57,16 @@ export default function CloudGate() {
     })
     return () => sub.subscription.unsubscribe()
   }, [])
+
+  // 定時同步其他裝置的異動（沒有待上傳、沒有斷線時才重新載入）
+  useEffect(() => {
+    if (phase !== 'ready') return
+    const t = setInterval(() => {
+      const b = currentBackend()
+      if (document.visibilityState === 'visible' && b.idle?.()) reloadAll().catch(() => {})
+    }, 60000)
+    return () => clearInterval(t)
+  }, [phase])
 
   if (phase === 'ready') return <App />
   const signOut = async () => {

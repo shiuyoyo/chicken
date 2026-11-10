@@ -15,7 +15,8 @@
     "e2e:cloud": "node tests/e2e/cloud.cjs",
     "test:replay": "vitest run --config vitest.replay.config.js",
     "e2e:flows": "node tests/e2e/flows.cjs local",
-    "e2e:flows:cloud": "node tests/e2e/flows.cjs cloud"
+    "e2e:flows:cloud": "node tests/e2e/flows.cjs cloud",
+    "e2e:offline": "node tests/e2e/offline-app.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

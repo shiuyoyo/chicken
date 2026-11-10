@@ -726,3 +726,51 @@ Object.assign(FORMS, {
     },
   },
 })
+
+Object.assign(FORMS, {
+  sales_performance: {
+    label: '業務業績報表', module: ['sales', 'crm', 'accounting'],
+    docs: () => recentMonths(6).map((m) => ({ id: monthRange(m).join('~'), no: m, label: `${m} 月份各業務業績` })),
+    build: (id) => {
+      const [from, to] = String(id).split('~')
+      const rows = L.salesPerformance(from, to)
+      const total = L.sum(rows, (r) => r.revenue)
+      return {
+        title: '業務業績報表', no: `${from} ～ ${to}`, noLabel: '期間', date: L.today(),
+        meta: [['期間', `${from} ～ ${to}`], ['銷售額合計', money(total)], ['毛利合計', money(L.sum(rows, (r) => r.margin))]],
+        columns: [
+          { h: '業務', r: (r) => user(r.user_id) || '（未指定）' },
+          { h: '銷售額', cls: 'num', r: (r) => money(r.revenue) },
+          { h: '目標', cls: 'num', r: (r) => (r.target ? money(r.target) : '') },
+          { h: '達成率', cls: 'num', r: (r) => (r.achieve === null ? '' : `${r.achieve}%`) },
+          { h: '毛利', cls: 'num', r: (r) => money(r.margin) },
+          { h: '毛利率', cls: 'num', r: (r) => `${r.pct}%` },
+          { h: '接單筆數', cls: 'num', r: (r) => r.orders },
+          { h: '新客戶', cls: 'num', r: (r) => r.newCustomers },
+          { h: '報價成交', cls: 'num', r: (r) => (r.quotes ? `${r.won}/${r.quotes}` : '') },
+          { h: '應收未收', cls: 'num', r: (r) => money(r.ar) },
+        ],
+        rows,
+        totals: [['銷售額合計', money(total)]],
+        notes: ['銷售額 = 期間內出貨金額（未稅）扣除銷貨退回；業績歸屬訂單上的業務。'],
+        signatures: ['業務主管', '總經理'],
+      }
+    },
+  },
+})
+
+// 電子發票證明聯（熱感發票機 57mm）。id = 'pos_sales:<id>' 或 'invoices:<id>'
+Object.assign(FORMS, {
+  einvoice: {
+    label: '電子發票證明聯', module: ['pos', 'accounting', 'shipping'], layout: 'einvoice',
+    docs: () => [
+      ...[...all('pos_sales')].reverse().filter((s) => s.status === 'done').map((s) => ({ id: `pos_sales:${s.id}`, no: s.gui_no, date: s.date, label: `門市 ${s.no} $${s.total}` })),
+      ...[...all('invoices')].reverse().map((i) => ({ id: `invoices:${i.id}`, no: i.gui_no, date: i.date, label: `${cust(i.customer_id).name} $${Math.round(i.total)}` })),
+    ],
+    build: (ref) => {
+      const e = L.einvoiceData(ref)
+      if (!e) return null
+      return { title: '電子發票證明聯', no: e.gui, layout: 'einvoice', e }
+    },
+  },
+})

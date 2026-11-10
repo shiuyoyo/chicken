@@ -220,6 +220,22 @@ create table if not exists public.price_lists (
 );
 alter table public.price_lists enable row level security;
 
+-- 促銷活動
+create table if not exists public.promotions (
+  id text primary key,
+  name text,
+  start_date date,
+  end_date date,
+  discount_pct numeric,
+  customer_level text,
+  lines jsonb,
+  active boolean,
+  note text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.promotions enable row level security;
+
 -- 客戶互動紀錄
 create table if not exists public.activities (
   id text primary key,
@@ -304,6 +320,7 @@ create table if not exists public.sales_orders (
   no text,
   customer_id text,
   quotation_id text,
+  salesperson_id text,
   date date,
   due_date date,
   status text,
@@ -316,6 +333,7 @@ create table if not exists public.sales_orders (
 );
 create index if not exists sales_orders_customer_id_idx on public.sales_orders (customer_id);
 create index if not exists sales_orders_quotation_id_idx on public.sales_orders (quotation_id);
+create index if not exists sales_orders_salesperson_id_idx on public.sales_orders (salesperson_id);
 alter table public.sales_orders enable row level security;
 
 -- 請購單
@@ -551,6 +569,10 @@ create table if not exists public.pos_shifts (
   diff numeric,
   status text,
   note text,
+  device text,
+  gui_from integer,
+  gui_to integer,
+  gui_next integer,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -576,6 +598,9 @@ create table if not exists public.pos_sales (
   points numeric,
   cashier text,
   status text,
+  random_code text,
+  buyer_tax_id text,
+  device text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -599,6 +624,7 @@ create table if not exists public.invoices (
   paid numeric,
   credited numeric,
   status text,
+  random_code text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -712,6 +738,7 @@ language sql stable security definer set search_path = '' as $$
     when k = 'gui_next' then public.erp_can_write(array['accounting', 'shipping', 'sales', 'pos'])
     when k = 'closed_until' then public.erp_level('accounting') >= 3 or public.erp_level('admin') >= 3
     when k = 'qc_templates' then public.erp_level('qc') >= 3 or public.erp_level('admin') >= 2
+    when k = 'sales_targets' then public.erp_level('sales') >= 3 or public.erp_level('admin') >= 2
     else public.erp_level('admin') >= 2
   end
 $$;
@@ -861,6 +888,17 @@ create policy "price_lists_read" on public.price_lists for select to authenticat
 create policy "price_lists_insert" on public.price_lists for insert to authenticated with check (public.erp_can_write(array['crm', 'sales']));
 create policy "price_lists_update" on public.price_lists for update to authenticated using (public.erp_can_write(array['crm', 'sales'])) with check (public.erp_can_write(array['crm', 'sales']));
 create policy "price_lists_delete" on public.price_lists for delete to authenticated using (public.erp_is_owner() or public.erp_can_write(array['crm', 'sales']));
+
+-- 促銷活動
+drop policy if exists "promotions_all" on public.promotions;
+drop policy if exists "promotions_read" on public.promotions;
+drop policy if exists "promotions_insert" on public.promotions;
+drop policy if exists "promotions_update" on public.promotions;
+drop policy if exists "promotions_delete" on public.promotions;
+create policy "promotions_read" on public.promotions for select to authenticated using (public.erp_is_member());
+create policy "promotions_insert" on public.promotions for insert to authenticated with check ((public.erp_level('sales') >= 3 or public.erp_level('crm') >= 3));
+create policy "promotions_update" on public.promotions for update to authenticated using ((public.erp_level('sales') >= 3 or public.erp_level('crm') >= 3)) with check ((public.erp_level('sales') >= 3 or public.erp_level('crm') >= 3));
+create policy "promotions_delete" on public.promotions for delete to authenticated using (public.erp_is_owner());
 
 -- 客戶互動紀錄
 drop policy if exists "activities_all" on public.activities;
@@ -1244,6 +1282,24 @@ end $$;
 drop trigger if exists erp_po_rules on public.purchase_orders;
 create constraint trigger erp_po_rules after insert or update on public.purchase_orders deferrable initially deferred for each row execute function public.erp_po_rules();
 
+-- 促銷活動價：這個價格是否不低於當天有效活動的活動價（活動由主管設定）
+create or replace function public.erp_promo_allows(item text, price numeric, cust text, d date) returns boolean
+language sql stable security definer set search_path = '' as $$
+  with c as (select level, price_list_id from public.customers where id = cust),
+  base as (
+    select coalesce((select (pl ->> 'price')::numeric from public.price_lists p, jsonb_array_elements(p.lines) pl
+                     where p.id = (select price_list_id from c) and pl ->> 'item_id' = item limit 1),
+                    (select i.price from public.items i where i.id = item), 0) as b
+  )
+  select exists (
+    select 1 from public.promotions p, jsonb_array_elements(coalesce(p.lines, '[]'::jsonb)) l
+    where coalesce(p.active, true) and (p.start_date is null or p.start_date <= d) and (p.end_date is null or p.end_date >= d)
+      and (coalesce(p.customer_level, '') = '' or p.customer_level = (select level from c))
+      and l ->> 'item_id' = item
+      and price >= coalesce(nullif((l ->> 'price')::numeric, 0), case when coalesce(p.discount_pct, 0) > 0 then round((select b from base) * (1 - p.discount_pct / 100), 2) end, 1e12) - 0.005
+  )
+$$;
+
 -- 銷售訂單：低於最低售價、超過信用額度要核准
 create or replace function public.erp_so_rules() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -1254,9 +1310,11 @@ begin
   if not found or cur.status <> 'confirmed' then return null; end if;
   if tg_op = 'UPDATE' and old.status not in ('pending', 'rejected') and cur.lines is not distinct from old.lines then return null; end if;
   if public.erp_approved_now('so', cur.id) then return null; end if;
+  -- 低於最低售價，而且不是當天有效的促銷活動價
   select string_agg(i.name, '、') into low from jsonb_array_elements(coalesce(cur.lines, '[]'::jsonb)) l
     join public.items i on i.id = l ->> 'item_id'
-    where coalesce(i.min_price, 0) > 0 and coalesce((l ->> 'price')::numeric, 0) < i.min_price;
+    where coalesce(i.min_price, 0) > 0 and coalesce((l ->> 'price')::numeric, 0) < i.min_price
+      and not public.erp_promo_allows(l ->> 'item_id', coalesce((l ->> 'price')::numeric, 0), cur.customer_id, coalesce(cur.date, current_date));
   if low is not null then raise exception '訂單 % 的 % 低於最低售價，需要先核准', cur.no, low; end if;
   total := public.erp_lines_total(cur.lines);
   select credit_limit into lim from public.customers where id = cur.customer_id;
@@ -1540,6 +1598,17 @@ begin
         delete from public.price_lists where true;
         return;
       end if;
+    when 'promotions' then
+      if op = 'insert' or op = 'restore' then
+        insert into public.promotions select * from jsonb_populate_record(null::public.promotions, r);
+      elsif op = 'update' then
+        update public.promotions set (name, start_date, end_date, discount_pct, customer_level, lines, active, note, created_at, updated_at) = (select name, start_date, end_date, discount_pct, customer_level, lines, active, note, created_at, updated_at from jsonb_populate_record(null::public.promotions, r)) where id = r->>'id';
+      elsif op = 'delete' then
+        delete from public.promotions where id = r->>'id';
+      elsif op = 'delete-all' then
+        delete from public.promotions where true;
+        return;
+      end if;
     when 'activities' then
       if op = 'insert' or op = 'restore' then
         insert into public.activities select * from jsonb_populate_record(null::public.activities, r);
@@ -1588,7 +1657,7 @@ begin
       if op = 'insert' or op = 'restore' then
         insert into public.sales_orders select * from jsonb_populate_record(null::public.sales_orders, r);
       elsif op = 'update' then
-        update public.sales_orders set (no, customer_id, quotation_id, date, due_date, status, lines, total, approved_total, note, created_at, updated_at) = (select no, customer_id, quotation_id, date, due_date, status, lines, total, approved_total, note, created_at, updated_at from jsonb_populate_record(null::public.sales_orders, r)) where id = r->>'id';
+        update public.sales_orders set (no, customer_id, quotation_id, salesperson_id, date, due_date, status, lines, total, approved_total, note, created_at, updated_at) = (select no, customer_id, quotation_id, salesperson_id, date, due_date, status, lines, total, approved_total, note, created_at, updated_at from jsonb_populate_record(null::public.sales_orders, r)) where id = r->>'id';
       elsif op = 'delete' then
         delete from public.sales_orders where id = r->>'id';
       elsif op = 'delete-all' then
@@ -1709,7 +1778,7 @@ begin
       if op = 'insert' or op = 'restore' then
         insert into public.pos_shifts select * from jsonb_populate_record(null::public.pos_shifts, r);
       elsif op = 'update' then
-        update public.pos_shifts set (no, bin_id, opened_by, opened_at, opening_cash, closed_by, closed_at, expected_cash, counted_cash, diff, status, note, created_at, updated_at) = (select no, bin_id, opened_by, opened_at, opening_cash, closed_by, closed_at, expected_cash, counted_cash, diff, status, note, created_at, updated_at from jsonb_populate_record(null::public.pos_shifts, r)) where id = r->>'id';
+        update public.pos_shifts set (no, bin_id, opened_by, opened_at, opening_cash, closed_by, closed_at, expected_cash, counted_cash, diff, status, note, device, gui_from, gui_to, gui_next, created_at, updated_at) = (select no, bin_id, opened_by, opened_at, opening_cash, closed_by, closed_at, expected_cash, counted_cash, diff, status, note, device, gui_from, gui_to, gui_next, created_at, updated_at from jsonb_populate_record(null::public.pos_shifts, r)) where id = r->>'id';
       elsif op = 'delete' then
         delete from public.pos_shifts where id = r->>'id';
       elsif op = 'delete-all' then
@@ -1720,7 +1789,7 @@ begin
       if op = 'insert' or op = 'restore' then
         insert into public.pos_sales select * from jsonb_populate_record(null::public.pos_sales, r);
       elsif op = 'update' then
-        update public.pos_sales set (no, gui_no, shift_id, customer_id, date, at, lines, discount, total, tax, method, received, change, points, cashier, status, created_at, updated_at) = (select no, gui_no, shift_id, customer_id, date, at, lines, discount, total, tax, method, received, change, points, cashier, status, created_at, updated_at from jsonb_populate_record(null::public.pos_sales, r)) where id = r->>'id';
+        update public.pos_sales set (no, gui_no, shift_id, customer_id, date, at, lines, discount, total, tax, method, received, change, points, cashier, status, random_code, buyer_tax_id, device, created_at, updated_at) = (select no, gui_no, shift_id, customer_id, date, at, lines, discount, total, tax, method, received, change, points, cashier, status, random_code, buyer_tax_id, device, created_at, updated_at from jsonb_populate_record(null::public.pos_sales, r)) where id = r->>'id';
       elsif op = 'delete' then
         delete from public.pos_sales where id = r->>'id';
       elsif op = 'delete-all' then
@@ -1731,7 +1800,7 @@ begin
       if op = 'insert' or op = 'restore' then
         insert into public.invoices select * from jsonb_populate_record(null::public.invoices, r);
       elsif op = 'update' then
-        update public.invoices set (no, gui_no, customer_id, sales_order_id, shipment_id, date, due_date, amount, tax, total, paid, credited, status, created_at, updated_at) = (select no, gui_no, customer_id, sales_order_id, shipment_id, date, due_date, amount, tax, total, paid, credited, status, created_at, updated_at from jsonb_populate_record(null::public.invoices, r)) where id = r->>'id';
+        update public.invoices set (no, gui_no, customer_id, sales_order_id, shipment_id, date, due_date, amount, tax, total, paid, credited, status, random_code, created_at, updated_at) = (select no, gui_no, customer_id, sales_order_id, shipment_id, date, due_date, amount, tax, total, paid, credited, status, random_code, created_at, updated_at from jsonb_populate_record(null::public.invoices, r)) where id = r->>'id';
       elsif op = 'delete' then
         delete from public.invoices where id = r->>'id';
       elsif op = 'delete-all' then

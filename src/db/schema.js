@@ -60,6 +60,11 @@ export const SCHEMA = {
     },
   },
   price_lists: { label: '價格表', group: 'CRM', cols: { name: 'text', lines: 'jsonb', note: 'text' } },
+  promotions: {
+    label: '促銷活動',
+    group: 'CRM',
+    cols: { name: 'text', start_date: 'date', end_date: 'date', discount_pct: 'numeric', customer_level: 'text', lines: 'jsonb', active: 'boolean', note: 'text' },
+  },
   activities: {
     label: '客戶互動紀錄',
     group: 'CRM',
@@ -85,7 +90,7 @@ export const SCHEMA = {
   sales_orders: {
     label: '銷售訂單',
     group: '銷售',
-    cols: { no: 'text', customer_id: 'text', quotation_id: 'text', date: 'date', due_date: 'date', status: 'text', lines: 'jsonb', total: 'numeric', approved_total: 'numeric', note: 'text' },
+    cols: { no: 'text', customer_id: 'text', quotation_id: 'text', salesperson_id: 'text', date: 'date', due_date: 'date', status: 'text', lines: 'jsonb', total: 'numeric', approved_total: 'numeric', note: 'text' },
   },
   requisitions: {
     label: '請購單',
@@ -163,6 +168,7 @@ export const SCHEMA = {
     cols: {
       no: 'text', bin_id: 'text', opened_by: 'text', opened_at: 'timestamptz', opening_cash: 'numeric', closed_by: 'text', closed_at: 'timestamptz',
       expected_cash: 'numeric', counted_cash: 'numeric', diff: 'numeric', status: 'text', note: 'text',
+      device: 'text', gui_from: 'integer', gui_to: 'integer', gui_next: 'integer',
     },
   },
   pos_sales: {
@@ -171,6 +177,7 @@ export const SCHEMA = {
     cols: {
       no: 'text', gui_no: 'text', shift_id: 'text', customer_id: 'text', date: 'date', at: 'timestamptz', lines: 'jsonb', discount: 'numeric',
       total: 'numeric', tax: 'numeric', method: 'text', received: 'numeric', change: 'numeric', points: 'numeric', cashier: 'text', status: 'text',
+      random_code: 'text', buyer_tax_id: 'text', device: 'text',
     },
   },
 
@@ -180,7 +187,7 @@ export const SCHEMA = {
     group: '會計',
     cols: {
       no: 'text', gui_no: 'text', customer_id: 'text', sales_order_id: 'text', shipment_id: 'text', date: 'date', due_date: 'date',
-      amount: 'numeric', tax: 'numeric', total: 'numeric', paid: 'numeric', credited: 'numeric', status: 'text',
+      amount: 'numeric', tax: 'numeric', total: 'numeric', paid: 'numeric', credited: 'numeric', status: 'text', random_code: 'text',
     },
   },
   bills: {
@@ -207,7 +214,7 @@ export const REFS = {
   sales_order_id: 'sales_orders', purchase_order_id: 'purchase_orders', work_order_id: 'work_orders', quotation_id: 'quotations',
   opportunity_id: 'opportunities', shipment_id: 'shipments', invoice_id: 'invoices', bill_id: 'bills', warehouse_id: 'warehouses',
   bin_id: 'bins', default_bin_id: 'bins', from_bin_id: 'bins', to_bin_id: 'bins', price_list_id: 'price_lists', owner_id: 'users',
-  user_id: 'users', shift_id: 'pos_shifts', requested_role_id: 'roles', approved_by: 'users', requester_id: 'users', requisition_id: 'requisitions',
+  user_id: 'users', salesperson_id: 'users', shift_id: 'pos_shifts', requested_role_id: 'roles', approved_by: 'users', requester_id: 'users', requisition_id: 'requisitions',
 }
 
 export function schemaSQL() {

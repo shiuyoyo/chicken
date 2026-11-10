@@ -455,7 +455,7 @@ export function Quotations() {
               <Field label="報價日"><Input type="date" value={edit.date} onChange={(v) => setEdit({ ...edit, date: v })} /></Field>
               <Field label="有效至"><Input type="date" value={edit.valid_until} onChange={(v) => setEdit({ ...edit, valid_until: v })} /></Field>
             </div>
-            <LineEditor lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
+            <LineEditor scan lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
             <Field label="備註（付款、運送條件）"><textarea className="input" value={edit.note || ''} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
           </div>
         </Modal>
@@ -467,6 +467,7 @@ export function Quotations() {
 // ---------- 價格表 ----------
 export function PriceLists() {
   const canEdit = L.can('crm', 2)
+  const [tab, setTab] = useTab('lists')
   const [edit, setEdit] = useState(null)
   const save = () => {
     const { id, created_at, updated_at, ...row } = edit
@@ -476,11 +477,13 @@ export function PriceLists() {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1 className="grow">價格表</h1>
-        {canEdit && <button className="btn primary" onClick={() => setEdit({ name: '', lines: [], note: '' })}>＋ 新價格表</button>}
+        <h1 className="grow">價格表與促銷</h1>
+        {tab === 'lists' && canEdit && <button className="btn primary" onClick={() => setEdit({ name: '', lines: [], note: '' })}>＋ 新價格表</button>}
       </div>
-      <p className="muted" style={{ margin: 0 }}>客戶綁定價格表後，下訂單與報價會自動帶入這裡的價格；沒列的品項用標準售價。</p>
-      {all('price_lists').map((pl) => (
+      <Tabs value={tab} onChange={setTab} tabs={[['lists', '客戶價格表'], ['promos', `促銷活動（進行中 ${L.activePromotions().length}）`]]} />
+      {tab === 'promos' && <Promotions />}
+      {tab === 'lists' && <p className="muted" style={{ margin: 0 }}>客戶綁定價格表後，下訂單與報價會自動帶入這裡的價格；沒列的品項用標準售價。</p>}
+      {tab === 'lists' && all('price_lists').map((pl) => (
         <div key={pl.id} className="card">
           <div className="card-head">
             <h3 className="grow">{pl.name}</h3>
@@ -508,6 +511,69 @@ export function PriceLists() {
               </div>
             ))}
             <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setEdit({ ...edit, lines: [...edit.lines, { item_id: '', price: '' }] })}>＋ 加品項</button>
+            <Field label="備註"><Input value={edit.note} onChange={(v) => setEdit({ ...edit, note: v })} /></Field>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ---------- 促銷活動：期間內自動套用活動價（訂單、報價、門市） ----------
+function Promotions() {
+  const canEdit = L.can('sales', 3) || L.can('crm', 3)
+  const [edit, setEdit] = useState(null)
+  const today = L.today()
+  const state = (p) => (p.active === false ? ['停用', ''] : p.end_date < today ? ['已結束', ''] : p.start_date > today ? ['未開始', 'info'] : ['進行中', 'ok'])
+  const save = () => {
+    const { id, created_at, updated_at, ...row } = edit
+    if (attempt(() => L.savePromotion(row, id), '活動已儲存')) setEdit(null)
+  }
+  const setLine = (i, patch) => setEdit({ ...edit, lines: edit.lines.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
+  return (
+    <div className="stack">
+      <div className="row">
+        <p className="muted" style={{ margin: 0, flex: 1 }}>活動期間內，訂單、報價會自動帶入批發活動價（未稅），門市收銀台自動用門市活動價（含稅）；活動價可以低於最低售價，不用另外簽核。設定活動需要業務或 CRM 的核准權。</p>
+        {canEdit && <button className="btn primary" onClick={() => setEdit({ name: '', start_date: today, end_date: L.addDays(today, 7), discount_pct: '', customer_level: '', lines: [{ item_id: '', price: '', pos_price: '' }], active: true, note: '' })}>＋ 新活動</button>}
+      </div>
+      {[...all('promotions')].reverse().map((p) => (
+        <div key={p.id} className="card">
+          <div className="card-head">
+            <h3 className="grow">{p.name} <Badge kind={state(p)[1]}>{state(p)[0]}</Badge></h3>
+            <span className="small muted">{p.start_date} ～ {p.end_date}{Number(p.discount_pct) > 0 && `・未填活動價的品項打 ${100 - p.discount_pct} 折`}{p.customer_level && `・限 ${p.customer_level} 級客戶`}</span>
+            {canEdit && <button className="btn sm" onClick={() => setEdit(JSON.parse(JSON.stringify(p)))}>編輯</button>}
+          </div>
+          <Table rows={p.lines} columns={[
+            { h: '品項', r: (l) => itemName(l.item_id) },
+            { h: '標準售價', cls: 'num', r: (l) => money(get('items', l.item_id)?.price) },
+            { h: '批發活動價', cls: 'num', r: (l) => (l.price ? <b>{money(l.price)}</b> : Number(p.discount_pct) > 0 ? `${100 - p.discount_pct} 折` : '—') },
+            { h: '門市價', cls: 'num', r: (l) => money(get('items', l.item_id)?.pos_price) },
+            { h: '門市活動價', cls: 'num', r: (l) => (l.pos_price ? <b>{money(l.pos_price)}</b> : Number(p.discount_pct) > 0 ? `${100 - p.discount_pct} 折` : '—') },
+          ]} />
+        </div>
+      ))}
+      {edit && (
+        <Modal wide title={edit.id ? `編輯活動：${edit.name}` : '新促銷活動'} onClose={() => setEdit(null)}
+          footer={<><button className="btn" onClick={() => setEdit(null)}>取消</button><button className="btn primary" onClick={save}>儲存</button></>}>
+          <div className="stack">
+            <div className="form-grid">
+              <Field label="活動名稱"><Input value={edit.name} onChange={(v) => setEdit({ ...edit, name: v })} placeholder="例如：雙 11、展覽特價" /></Field>
+              <Field label="開始日"><Input type="date" value={edit.start_date} onChange={(v) => setEdit({ ...edit, start_date: v })} /></Field>
+              <Field label="結束日（含）"><Input type="date" value={edit.end_date} onChange={(v) => setEdit({ ...edit, end_date: v })} /></Field>
+              <Field label="整檔折扣 %（選填）" hint="品項沒填活動價時，用原價打折"><Input type="number" value={edit.discount_pct} onChange={(v) => setEdit({ ...edit, discount_pct: v })} placeholder="例如 10 = 打 9 折" /></Field>
+              <Field label="限定客戶等級（選填）"><Select value={edit.customer_level} placeholder="所有客戶" options={['VIP', 'A', 'B', 'C'].map((x) => ({ value: x, label: x }))} onChange={(v) => setEdit({ ...edit, customer_level: v })} /></Field>
+              <Check checked={edit.active !== false} onChange={(v) => setEdit({ ...edit, active: v })} label="啟用" />
+            </div>
+            <div className="small muted">活動品項：批發活動價（未稅）／門市活動價（含稅），不填就用整檔折扣</div>
+            {edit.lines.map((l, i) => (
+              <div key={i} className="row" style={{ flexWrap: 'nowrap' }}>
+                <div style={{ flex: 2, minWidth: 0 }}><Select value={l.item_id} options={itemOptions(['product', 'semi'])} onChange={(v) => setLine(i, { item_id: v })} /></div>
+                <div style={{ flex: 1 }}><Input type="number" value={l.price ?? ''} placeholder="批發價" onChange={(v) => setLine(i, { price: v })} /></div>
+                <div style={{ flex: 1 }}><Input type="number" value={l.pos_price ?? ''} placeholder="門市價" onChange={(v) => setLine(i, { pos_price: v })} /></div>
+                <button className="btn sm ghost danger" aria-label="移除" onClick={() => setEdit({ ...edit, lines: edit.lines.filter((_, j) => j !== i) })}>✕</button>
+              </div>
+            ))}
+            <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setEdit({ ...edit, lines: [...edit.lines, { item_id: '', price: '', pos_price: '' }] })}>＋ 加品項</button>
             <Field label="備註"><Input value={edit.note} onChange={(v) => setEdit({ ...edit, note: v })} /></Field>
           </div>
         </Modal>

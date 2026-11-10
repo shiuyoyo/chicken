@@ -32,7 +32,7 @@ export function SalesOrders() {
     }
   }
   const cust = get('customers', edit?.customer_id)
-  const checks = edit?.customer_id ? L.orderChecks(edit.customer_id, edit.lines.filter((l) => l.item_id && l.qty > 0), edit.id) : []
+  const checks = edit?.customer_id ? L.orderChecks(edit.customer_id, edit.lines.filter((l) => l.item_id && l.qty > 0), edit.id, edit.date) : []
 
   return (
     <div className="stack">
@@ -57,7 +57,7 @@ export function SalesOrders() {
           footer={<><button className="btn" onClick={closeEdit}>取消</button><button className="btn primary" onClick={save}>{checks.length ? '儲存並送簽核' : '儲存'}（{money(L.docTotal(edit.lines))}）</button></>}>
           <div className="stack">
             <div className="form-grid">
-              <Field label="客戶"><Select value={edit.customer_id} options={partyOptions('customers', (c) => c.kind !== 'member' && c.status !== '停止往來')} onChange={(v) => setEdit({ ...edit, customer_id: v, lines: edit.lines.map((l) => ({ ...l, price: l.item_id ? L.priceFor(v, l.item_id) : l.price })) })} /></Field>
+              <Field label="客戶"><Select value={edit.customer_id} options={partyOptions('customers', (c) => c.kind !== 'member' && c.status !== '停止往來')} onChange={(v) => setEdit({ ...edit, customer_id: v, lines: edit.lines.map((l) => ({ ...l, price: l.item_id ? L.priceFor(v, l.item_id, edit.date) : l.price })) })} /></Field>
               <Field label="下單日"><Input type="date" value={edit.date} onChange={(v) => setEdit({ ...edit, date: v })} /></Field>
               <Field label="交期"><Input type="date" value={edit.due_date} onChange={(v) => setEdit({ ...edit, due_date: v })} /></Field>
             </div>
@@ -68,7 +68,7 @@ export function SalesOrders() {
                 {cust.min_shelf_days ? `要求剩餘效期 ${cust.min_shelf_days} 天` : ''}
               </div>
             )}
-            <LineEditor lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id)} />
+            <LineEditor scan lines={edit.lines} types={['product', 'semi']} onChange={(lines) => setEdit({ ...edit, lines })} defaultPrice={(id) => L.priceFor(edit.customer_id, id, edit.date)} />
             {checks.length > 0 && <div className="notice warn">⚠ 這張訂單需要主管核准：{checks.join('；')}</div>}
             <Field label="備註"><textarea className="input" value={edit.note || ''} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
           </div>

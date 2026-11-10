@@ -1,14 +1,46 @@
 // 門市 POS：只賣「門市儲位有庫存」的品項（從成品倉調撥過去 = 設定門市庫存）。
 // 開班 → 結帳（現金找零 / 刷卡 / 行動支付、會員點數、折扣權限）→ 作廢（主管）→ 日結對帳。
-import { all, get, where, insert, update, nextNo, nowISO, transaction } from '../db/store'
-import { fail, need, can, round, sum, today, userName, getSetting, taxRate, postJournal, assertOpen, nextGui, requestApproval, registerApproval, isSystem } from './core'
+import { all, get, where, insert, update, nextNo, nowISO, transaction, getPref } from '../db/store'
+import { fail, need, can, round, sum, today, userName, getSetting, setSetting, taxRate, postJournal, assertOpen, nextGui, requestApproval, registerApproval, isSystem } from './core'
 import { notify } from './notify'
+import { posPrice } from './sales'
+import { newRandomCode } from './einvoice'
 import { allocate, move, binsOfKind, onHand, lotCost, stockRows, lotByNo, isExpired } from './inventory'
 
 export const POS_METHODS = ['現金', '信用卡', 'LINE Pay', '街口支付']
 
 export const storeBins = () => binsOfKind('store')
-export const openShift = (binId) => where('pos_shifts', (s) => s.status === 'open' && (!binId || s.bin_id === binId))[0]
+// 裝置代號：展場有多台收銀機時，每台設定不同代號（A、B、C…），交易單號、班別、發票號碼區段各自分開，離線也不會重號
+export const posDevice = () => String(getPref('posDevice', '') || '')
+export const openShift = (binId, device = posDevice()) =>
+  where('pos_shifts', (s) => s.status === 'open' && (!binId || s.bin_id === binId) && (s.device || '') === device)[0]
+
+// 發票號碼區段：開班時先保留一段號碼給這台收銀機（離線時也能繼續開發票）
+function reserveGuiBlock() {
+  const size = Number(getSetting('pos_gui_block')) || 100
+  const from = Number(getSetting('gui_next'))
+  setSetting('gui_next', from + size, { system: true })
+  return { gui_from: from, gui_to: from + size - 1, gui_next: from }
+}
+function shiftGui(shift) {
+  let { gui_next: n, gui_to: to } = get('pos_shifts', shift.id)
+  const patch = {}
+  if (n > to) {
+    // 這段用完了，再保留一段（需要連線）
+    const b = reserveGuiBlock()
+    n = b.gui_from
+    patch.gui_to = b.gui_to
+    patch.note = `${shift.note || ''} 追加發票區段 ${b.gui_from}～${b.gui_to}`.trim()
+  }
+  update('pos_shifts', shift.id, { ...patch, gui_next: n + 1 })
+  return `${getSetting('gui_prefix')}-${String(n).padStart(8, '0')}`
+}
+// 日結時還沒用到的發票號碼（要申報空白發票）
+export function unusedGui(shift) {
+  if (!shift?.gui_from || shift.gui_next > shift.gui_to) return null
+  const p = getSetting('gui_prefix')
+  return { from: `${p}-${String(shift.gui_next).padStart(8, '0')}`, to: `${p}-${String(shift.gui_to).padStart(8, '0')}`, count: shift.gui_to - shift.gui_next + 1 }
+}
 
 // 門市可賣的品項：啟用 POS、門市有 QC 合格且未過期的庫存
 export function posCatalog(binId) {
@@ -25,7 +57,7 @@ export function posCatalog(binId) {
         ),
         3,
       )
-      return { item: i, price: Number(i.pos_price || i.price || 0), avail }
+      return { item: i, price: posPrice(i.id), base: Number(i.pos_price || i.price || 0), avail }
     })
     .filter((x) => x.avail > 0)
 }
@@ -34,8 +66,11 @@ export function startShift({ bin_id, opening_cash = 0 }) {
   return transaction(() => {
     need('pos', 2)
     if (!bin_id) fail('請選擇門市')
-    if (openShift(bin_id)) fail('這個門市已經有開著的班別')
-    return insert('pos_shifts', { no: nextNo('pos_shifts', 'SF'), bin_id, opened_by: userName(), opened_at: nowISO(), opening_cash: Number(opening_cash) || 0, status: 'open' })
+    const device = posDevice()
+    if (openShift(bin_id, device)) fail(device ? `收銀機 ${device} 在這個門市已經有開著的班別` : '這個門市已經有開著的班別')
+    return insert('pos_shifts', {
+      no: nextNo('pos_shifts', `SF${device}`), bin_id, opened_by: userName(), opened_at: nowISO(), opening_cash: Number(opening_cash) || 0, status: 'open', device, ...reserveGuiBlock(),
+    })
   })
 }
 
@@ -52,7 +87,7 @@ export function shiftSummary(shiftId) {
 }
 
 // cart: [{ item_id, qty }]
-export function posCheckout({ shift_id, cart, discount = 0, method = '現金', received, customer_id = '', date = today() }) {
+export function posCheckout({ shift_id, cart, discount = 0, method = '現金', received, customer_id = '', buyer_tax_id = '', date = today() }) {
   return transaction(() => {
     need('pos', 2)
     assertOpen(date)
@@ -63,7 +98,7 @@ export function posCheckout({ shift_id, cart, discount = 0, method = '現金', r
     const priced = lines0.map((c) => {
       const item = get('items', c.item_id)
       if (!item?.pos_enabled) fail(`${item?.name} 沒有開放門市銷售`)
-      return { item_id: c.item_id, qty: Number(c.qty), price: Number(item.pos_price || item.price || 0) }
+      return { item_id: c.item_id, qty: Number(c.qty), price: posPrice(c.item_id, date) }
     })
     const subtotal = round(sum(priced, (l) => l.qty * l.price))
     discount = round(Number(discount) || 0)
@@ -83,9 +118,11 @@ export function posCheckout({ shift_id, cart, discount = 0, method = '現金', r
     const tax = round(total - total / (1 + taxRate()))
     const pointsPer = Number(getSetting('pos_points_per')) || 100
     const points = customer_id ? Math.floor(total / pointsPer) : 0
+    buyer_tax_id = String(buyer_tax_id || '').trim()
+    if (buyer_tax_id && !/^\d{8}$/.test(buyer_tax_id)) fail('統一編號是 8 位數字')
     const sale = insert('pos_sales', {
-      no: nextNo('pos_sales', 'POS', date), gui_no: nextGui(), shift_id, customer_id, date, at: nowISO(), lines: alloc, discount, total, tax, method,
-      received: method === '現金' ? received : total, change, points, cashier: userName(), status: 'done',
+      no: nextNo('pos_sales', `POS${shift.device || ''}`, date), gui_no: shift.gui_from ? shiftGui(shift) : nextGui(), shift_id, customer_id, date, at: nowISO(), lines: alloc, discount, total, tax, method,
+      received: method === '現金' ? received : total, change, points, cashier: userName(), status: 'done', random_code: newRandomCode(), buyer_tax_id,
     })
     let cogs = 0
     for (const a of alloc) {
@@ -142,6 +179,7 @@ export function closeShift(id, counted_cash, note = '') {
     need('pos', 2)
     const sh = get('pos_shifts', id)
     if (sh.status !== 'open') fail('班別已日結')
+    const blank = unusedGui(sh)
     if (counted_cash === '' || counted_cash === null || isNaN(Number(counted_cash))) fail('請輸入點收現金')
     if (where('approvals', (a) => a.status === 'pending' && a.type === 'pos_void' && shiftSales(id).some((s) => s.id === a.ref_id)).length) fail('還有待店長核准的作廢單')
     const { expected } = shiftSummary(id)
@@ -150,7 +188,7 @@ export function closeShift(id, counted_cash, note = '') {
     const sum0 = shiftSummary(id)
     notify('pos_closed', {
       title: `門市日結 ${sh.no}`,
-      lines: [`營業額 $${Math.round(sum0.total).toLocaleString()}（${sum0.count} 筆）`, Object.entries(sum0.byMethod).map(([m, v]) => `${m} $${Math.round(v).toLocaleString()}`).join('、'), diff ? `⚠ 現金${diff > 0 ? '多' : '少'} $${Math.abs(diff)}` : '現金相符', `收銀：${userName()}`],
+      lines: [`營業額 $${Math.round(sum0.total).toLocaleString()}（${sum0.count} 筆）`, Object.entries(sum0.byMethod).map(([m, v]) => `${m} $${Math.round(v).toLocaleString()}`).join('、'), diff ? `⚠ 現金${diff > 0 ? '多' : '少'} $${Math.abs(diff)}` : '現金相符', blank && `未使用發票 ${blank.from}～${blank.to}（${blank.count} 張，需申報空白）`, `收銀：${userName()}`],
       link: '/pos-sales',
     })
     return update('pos_shifts', id, { status: 'closed', closed_by: userName(), closed_at: nowISO(), expected_cash: expected, counted_cash: Number(counted_cash), diff, note })

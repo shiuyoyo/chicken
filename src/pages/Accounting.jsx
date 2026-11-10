@@ -56,7 +56,7 @@ export default function Accounting() {
             { h: '已收 / 折讓', cls: 'num', r: (i) => `${money(i.paid)} / ${money(i.credited)}` },
             { h: '未收', cls: 'num', r: (i) => money(L.invoiceBalance(i)) },
             { h: '到期', r: (i) => aging(i.due_date, L.invoiceBalance(i)) },
-            { h: '列印', r: (i) => <PrintButton sm type="invoice" id={i.id} label="請款單" /> },
+            { h: '列印', r: (i) => <span className="row nowrap"><PrintButton sm type="invoice" id={i.id} label="請款單" /><PrintButton sm type="einvoice" id={`invoices:${i.id}`} label="發票" /></span> },
             { h: '', r: (i) => canEdit && L.invoiceBalance(i) > 0 && <button className="btn sm primary" onClick={() => setPay({ kind: 'in', id: i.id, amount: L.invoiceBalance(i), method: '匯款', date: L.today() })}>收款</button> },
           ]} />
         </div>

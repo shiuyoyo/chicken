@@ -586,3 +586,25 @@ table.table { width: 100%; border-collapse: collapse; }
 .pf-info > .pf-meta:only-child { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media screen and (max-width: 820px) { .pf-info > .pf-meta:only-child { grid-template-columns: 1fr; } }
 .pf-table .pf-idx, .pf-table td.num, .pf-table th.num { white-space: nowrap; }
+.scan-box { font-size: 18px; padding: 12px 14px; border: 2px dashed var(--primary); }
+/* 電子發票證明聯：57mm 熱感發票機 */
+.pf-einv { width: 57mm; background: #fff; margin: 16px auto; padding: 3mm 2.5mm; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: #000; }
+.pf-einv-proof { display: flex; flex-direction: column; align-items: center; gap: 0.6mm; padding-bottom: 2mm; border-bottom: 1px dashed #000; }
+.pf-einv-co { font-weight: 700; font-size: 13px; }
+.pf-einv-title { font-weight: 800; font-size: 17px; letter-spacing: 1px; }
+.pf-einv-big { font-weight: 800; font-size: 18px; }
+.pf-einv-row { display: flex; justify-content: space-between; width: 100%; }
+.pf-c39 { width: 100%; height: 10mm; margin-top: 1mm; }
+.pf-einv-qr { display: flex; justify-content: space-between; width: 100%; }
+.pf-einv-qr .qr { width: 24mm; height: 24mm; }
+.pf-einv-detail { padding-top: 2mm; display: flex; flex-direction: column; gap: 0.6mm; }
+.pf-einv-detail .center { text-align: center; font-weight: 700; }
+/* 點陣印表機中一刀：241 × 140mm，黑白 */
+.pf-page.pf-dm { width: 241mm; min-height: 140mm; padding: 7mm 9mm; font-size: 12px; gap: 6px; color: #000; }
+.pf-dm .pf-table th, .pf-dm .pf-meta dt, .pf-dm .pf-totals th { background: none !important; }
+.pf-dm .pf-sign > div { min-height: 12mm; }
+.pf-dm-copies { font-size: 10px; text-align: right; }
+@media print {
+  .layout-einvoice .pf-einv { page: receipt; margin: 0; }
+  .pf-page.pf-dm { width: 241mm; min-height: 139mm; }
+}

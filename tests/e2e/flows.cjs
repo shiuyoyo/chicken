@@ -54,7 +54,11 @@ async function toast(re, kind = '') {
   }
   // 雲端：等這一批寫入送到資料庫（被拒絕會出現紅色訊息）
   if (MODE === 'cloud') {
-    await page.waitForTimeout(900)
+    // 等右上角顯示「已同步」（這一批已經上傳到雲端）
+    await page.waitForTimeout(300)
+    const sync = page.locator('.badge', { hasText: /已同步|上傳失敗|離線中|上傳中/ }).first()
+    if (await sync.count()) await page.locator('.badge', { hasText: /^已同步$|上傳失敗/ }).first().waitFor({ timeout: 15000 })
+    else await page.waitForTimeout(900)
     const bad = await page.locator('.toast.bad').allInnerTexts()
     if (bad.length) throw new Error('雲端拒絕：' + bad.join(' / '))
   }
@@ -355,6 +359,95 @@ async function approve(rowText, who) {
       const u = (await rows('users')).find((x) => x.name === '驗收員工')
       if (!u || u.email !== 'newbie@flows.local') throw new Error('員工沒有存進去')
       return '角色「倉管（驗收）」與員工「驗收員工」已建立'
+    })
+
+    await step('F13', '業務主管：掃描槍掃碼銷貨 → 一次產生訂單、銷貨單、發票（活動價）', async () => {
+      await loginAs('黃經理')
+      await go('/quick-sale')
+      await pick(page.getByLabel('客戶'), '大和團膳')
+      // 掃描槍 = 快速打字 + Enter
+      for (let i = 0; i < 2; i++) {
+        await page.getByLabel('掃描條碼').fill('4710000000042')
+        await page.getByLabel('掃描條碼').press('Enter')
+      }
+      const t = await page.locator('table').innerText()
+      if (!/麻辣雞丁/.test(t) || !/\b2\b/.test(await page.locator('table input[type=number]').first().inputValue())) throw new Error('掃描沒有加到 2 件：' + t.slice(0, 80))
+      if (!t.includes('特價')) throw new Error('沒有套用活動價')
+      await btn('建立銷貨單').click()
+      await toast('已完成')
+      const s = await shot('quick-sale')
+      await page.getByRole('link', { name: /電子發票證明聯/ }).click()
+      await page.locator('.pf-einv .qr').first().waitFor()
+      const bar = await page.locator('.pf-c39').getAttribute('aria-label')
+      const sh = (await rows('shipments')).filter((x) => x.note === '掃碼銷貨' || true).sort((a, b) => String(b.created_at).localeCompare(a.created_at))[0]
+      const inv = (await rows('invoices')).find((i) => i.shipment_id === sh.id)
+      if (!inv || inv.amount !== 230) throw new Error(`應收金額 ${inv?.amount}`)
+      return { detail: `嗶 2 次 → 銷貨單 ${sh.no}、發票 ${inv.gui_no}（活動價 $115 × 2），證明聯${bar}`, shot: s }
+    })
+
+    await step('F14', '業務主管：建立促銷活動，訂單自動帶活動價', async () => {
+      await go('/price-lists?tab=promos')
+      await btn('＋ 新活動').click()
+      await modal().getByLabel('活動名稱').fill('展覽特價（驗收）')
+      await pick(modal().locator('select').nth(1), '舒肥雞胸')
+      await modal().getByPlaceholder('批發價').fill('58')
+      await modal().getByPlaceholder('門市價').fill('69')
+      await modal().getByRole('button', { name: '儲存' }).click()
+      await toast('活動已儲存')
+      await go('/sales')
+      await btn('＋ 新訂單').click()
+      await pick(modal().getByLabel('客戶'), '大和團膳')
+      await pick(modal().locator('table select').first(), '舒肥雞胸')
+      const price = await modal().locator('table input[type=number]').nth(1).inputValue()
+      if (price !== '58') throw new Error('沒有帶入活動價：' + price)
+      await page.keyboard.press('Escape')
+      return '舒肥雞胸活動價 $58（標準價 $65），新訂單自動帶入'
+    })
+
+    await step('F15', '業務主管：業務業績（目標達成率）與業績報表列印', async () => {
+      await go('/reports?tab=people')
+      const t = await page.locator('table').first().innerText()
+      if (!t.includes('陳業務') || !/\d+%/.test(t)) throw new Error('業績表不完整：' + t.slice(0, 100))
+      const s = await shot('sales-people')
+      await page.getByRole('link', { name: /業績報表/ }).click()
+      await page.locator('.pf-title', { hasText: '業務業績報表' }).waitFor()
+      return { detail: '各業務銷售額、目標、達成率、毛利、報價成交；可列印業績報表', shot: s }
+    })
+
+    await step('F16', MODE === 'cloud' ? '展場收銀機 A：斷網照常結帳，重開網頁仍可用，恢復網路後自動上傳' : '展場收銀機 A：獨立班別、交易單號與發票號碼區段', async () => {
+      await loginAs('小美')
+      await go('/pos')
+      await page.getByLabel('收銀機代號').selectOption('A')
+      await btn('開始營業').click()
+      await toast('已開班')
+      const before = (await rows('pos_sales')).length
+      // 斷網：連不到雲端資料庫（網頁本身的離線開啟另外在 offline-app.cjs 測）
+      const cut = (r) => r.abort('internetdisconnected')
+      if (MODE === 'cloud') await ctx.route(`http://localhost:${SB_PORT}/**`, cut)
+      await page.locator('.pos-tile', { hasText: '麻油雞' }).first().click()
+      if (await page.locator('.pos-cart-toggle').isVisible()) await page.locator('.pos-cart-toggle').click()
+      await page.locator('.pos-cart').getByRole('button', { name: /結帳/ }).click()
+      await page.getByText('交易完成').waitFor()
+      await btn('下一位客人').click()
+      if (MODE === 'local') {
+        const sale = (await rows('pos_sales')).sort((a, b) => String(b.created_at).localeCompare(a.created_at))[0]
+        if (!/^POSA/.test(sale.no)) throw new Error('交易單號沒有收銀機代號：' + sale.no)
+        return `交易 ${sale.no}、發票 ${sale.gui_no}（這台收銀機自己的號碼區段）`
+      }
+      await page.getByRole('button', { name: /離線中・\d+ 筆待上傳/ }).first().waitFor()
+      if ((await rows('pos_sales')).length !== before) throw new Error('離線時不應該已經上傳')
+      const s = await shot('pos-offline')
+      // 斷網時重新整理網頁：還是打得開，畫面上還看得到剛才那筆
+      await page.reload()
+      // 連不到雲端時，supabase 會先重試幾次（約 10 秒）才改用裝置上的資料
+      await page.locator('.pos, .layout').first().waitFor({ timeout: 45000 })
+      await ctx.unroute(`http://localhost:${SB_PORT}/**`, cut)
+      await page.evaluate(() => window.dispatchEvent(new Event('online')))
+      await page.getByRole('button', { name: '已同步' }).first().waitFor({ timeout: 30000 })
+      const after = await rows('pos_sales')
+      const sale = after.find((x) => /^POSA/.test(x.no))
+      if (after.length !== before + 1 || !sale) throw new Error(`雲端交易 ${before} → ${after.length}`)
+      return { detail: `斷網結帳 → 顯示「離線中・待上傳」→ 斷網重開仍可用 → 連線後自動上傳 ${sale.no}（發票 ${sale.gui_no}）`, shot: s }
     })
 
     await step('F12', '資料健康：傳票全部平衡、沒有負庫存', async () => {

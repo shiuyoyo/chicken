@@ -8,6 +8,7 @@ export const WRITE_MODULES = {
   roles: ['admin'],
   users: ['admin'],
   settings: null, // 依 key 檢查，見 erp_can_write_setting
+  promotions: null, // 活動價可以低於最低售價，只有業務 / CRM 主管（核准權）能設定
   approvals: 'member', // 簽核決定另外由觸發器檢查
   notify_contacts: ['admin'],
   notifications: 'member',
@@ -46,6 +47,7 @@ const sqlArr = (mods) => `array[${mods.map((m) => `'${m}'`).join(', ')}]`
 const writeCheck = (t) => {
   const m = WRITE_MODULES[t]
   if (t === 'settings') return 'public.erp_can_write_setting(key)'
+  if (t === 'promotions') return "(public.erp_level('sales') >= 3 or public.erp_level('crm') >= 3)"
   if (m === 'member') return 'public.erp_is_member()'
   return `public.erp_can_write(${sqlArr(m)})`
 }
@@ -122,6 +124,7 @@ language sql stable security definer set search_path = '' as $$
     when k = 'gui_next' then public.erp_can_write(array['accounting', 'shipping', 'sales', 'pos'])
     when k = 'closed_until' then public.erp_level('accounting') >= 3 or public.erp_level('admin') >= 3
     when k = 'qc_templates' then public.erp_level('qc') >= 3 or public.erp_level('admin') >= 2
+    when k = 'sales_targets' then public.erp_level('sales') >= 3 or public.erp_level('admin') >= 2
     else public.erp_level('admin') >= 2
   end
 $$;
@@ -311,6 +314,24 @@ end $$;
 drop trigger if exists erp_po_rules on public.purchase_orders;
 create constraint trigger erp_po_rules after insert or update on public.purchase_orders deferrable initially deferred for each row execute function public.erp_po_rules();
 
+-- 促銷活動價：這個價格是否不低於當天有效活動的活動價（活動由主管設定）
+create or replace function public.erp_promo_allows(item text, price numeric, cust text, d date) returns boolean
+language sql stable security definer set search_path = '' as $$
+  with c as (select level, price_list_id from public.customers where id = cust),
+  base as (
+    select coalesce((select (pl ->> 'price')::numeric from public.price_lists p, jsonb_array_elements(p.lines) pl
+                     where p.id = (select price_list_id from c) and pl ->> 'item_id' = item limit 1),
+                    (select i.price from public.items i where i.id = item), 0) as b
+  )
+  select exists (
+    select 1 from public.promotions p, jsonb_array_elements(coalesce(p.lines, '[]'::jsonb)) l
+    where coalesce(p.active, true) and (p.start_date is null or p.start_date <= d) and (p.end_date is null or p.end_date >= d)
+      and (coalesce(p.customer_level, '') = '' or p.customer_level = (select level from c))
+      and l ->> 'item_id' = item
+      and price >= coalesce(nullif((l ->> 'price')::numeric, 0), case when coalesce(p.discount_pct, 0) > 0 then round((select b from base) * (1 - p.discount_pct / 100), 2) end, 1e12) - 0.005
+  )
+$$;
+
 -- 銷售訂單：低於最低售價、超過信用額度要核准
 create or replace function public.erp_so_rules() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -321,9 +342,11 @@ begin
   if not found or cur.status <> 'confirmed' then return null; end if;
   if tg_op = 'UPDATE' and old.status not in ('pending', 'rejected') and cur.lines is not distinct from old.lines then return null; end if;
   if public.erp_approved_now('so', cur.id) then return null; end if;
+  -- 低於最低售價，而且不是當天有效的促銷活動價
   select string_agg(i.name, '、') into low from jsonb_array_elements(coalesce(cur.lines, '[]'::jsonb)) l
     join public.items i on i.id = l ->> 'item_id'
-    where coalesce(i.min_price, 0) > 0 and coalesce((l ->> 'price')::numeric, 0) < i.min_price;
+    where coalesce(i.min_price, 0) > 0 and coalesce((l ->> 'price')::numeric, 0) < i.min_price
+      and not public.erp_promo_allows(l ->> 'item_id', coalesce((l ->> 'price')::numeric, 0), cur.customer_id, coalesce(cur.date, current_date));
   if low is not null then raise exception '訂單 % 的 % 低於最低售價，需要先核准', cur.no, low; end if;
   total := public.erp_lines_total(cur.lines);
   select credit_limit into lim from public.customers where id = cur.customer_id;

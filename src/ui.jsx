@@ -1,8 +1,8 @@
 // 共用介面元件
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { all, get, findBy } from './db/store'
-import { can, binLabel, lotByNo, round } from './logic'
+import { can, binLabel, lotByNo, round, itemByCode } from './logic'
 
 export const money = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Math.round(Number(n) || 0)).toLocaleString()
 export const qty = (n, unit = '') => `${(Math.round((Number(n) || 0) * 1000) / 1000).toLocaleString()}${unit ? ' ' + unit : ''}`
@@ -285,10 +285,21 @@ export function Search({ value, onChange, placeholder = '搜尋…' }) {
 export const matches = (q, ...fields) => !q || fields.some((f) => String(f ?? '').toLowerCase().includes(q.toLowerCase()))
 
 // 單據明細編輯器：品項 + 數量 + 單價
-export function LineEditor({ lines, onChange, types, withPrice = true, defaultPrice, readOnly }) {
+export function LineEditor({ lines, onChange, types, withPrice = true, defaultPrice, readOnly, scan }) {
   const set = (i, patch) => onChange(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)))
+  // 掃到同一個品項就數量 +1，新的品項加一列（空白列會被取代）
+  const onCode = (code) => {
+    const it = itemByCode(code)
+    if (!it) return toast(`找不到條碼 / 料號「${code}」`, 'bad')
+    if (types && !types.includes(it.type)) return toast(`${it.name} 不能用在這張單`, 'bad')
+    const i = lines.findIndex((l) => l.item_id === it.id)
+    if (i >= 0) return set(i, { qty: Number(lines[i].qty || 0) + 1 })
+    const rest = lines.filter((l) => l.item_id)
+    onChange([...rest, { item_id: it.id, qty: 1, ...(withPrice ? { price: defaultPrice ? defaultPrice(it.id) : it.price } : {}) }])
+  }
   return (
     <div className="table-wrap">
+      {scan && !readOnly && <div style={{ marginBottom: 8 }}><ScanBox onCode={onCode} autoFocus={false} /></div>}
       <table className="table">
         <thead>
           <tr>
@@ -459,6 +470,54 @@ export function CrudPage({ title, rows, fields, columns, defaults = {}, onSave, 
 export { findBy }
 
 // 列印按鈕：開啟列印頁（同一個分頁，列印頁有「返回」）
+// ---- 掃描槍：條碼槍等同鍵盤，快速打完條碼再按 Enter ----
+// ScanBox：一個輸入框，按 Enter 送出；useScanner：沒有點在輸入框時也能直接嗶（例如收銀台）
+export function ScanBox({ onCode, placeholder = '掃描條碼，或輸入料號後按 Enter', autoFocus = true }) {
+  const [v, setV] = useState('')
+  return (
+    <input
+      className="input scan-box"
+      autoFocus={autoFocus}
+      value={v}
+      placeholder={'▮▮▯▮ ' + placeholder}
+      aria-label="掃描條碼"
+      onChange={(e) => setV(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        const code = v.trim()
+        setV('')
+        if (code) onCode(code)
+      }}
+    />
+  )
+}
+export function useScanner(onCode, enabled = true) {
+  const ref = useRef(onCode)
+  ref.current = onCode
+  useEffect(() => {
+    if (!enabled) return
+    let buf = ''
+    let last = 0
+    const onKey = (e) => {
+      const t = e.target
+      if (t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return
+      const now = Date.now()
+      if (now - last > 80) buf = ''
+      last = now
+      if (e.key === 'Enter') {
+        if (buf.length >= 4) {
+          e.preventDefault()
+          ref.current(buf)
+        }
+        buf = ''
+      } else if (e.key.length === 1) buf += e.key
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [enabled])
+}
+
 export function PrintButton({ type, id, label = '列印', sm, params }) {
   if (!id) return null
   const qs = params ? '?' + new URLSearchParams(params).toString() : ''

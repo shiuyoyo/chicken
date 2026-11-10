@@ -22,9 +22,11 @@ function QR({ text, size = 120 }) {
 
 const Lines = ({ text }) => String(text ?? '').split('\n').map((t, i) => <div key={i}>{t}</div>)
 
-function A4({ f }) {
+// dm：點陣印表機連續報表紙「中一刀」241 × 140mm（三聯複寫），黑白、不用底色
+function A4({ f, dm }) {
   return (
-    <div className="pf-page">
+    <div className={'pf-page' + (dm ? ' pf-dm' : '')}>
+      {dm && <style>{`@page { size: 241mm 140mm; margin: 0; }`}</style>}
       <header className="pf-head">
         <div className="pf-company">
           <b>{L.getSetting('company_name')}</b>
@@ -103,6 +105,7 @@ function A4({ f }) {
           {f.signatures.map((s) => <div key={s}><span>{s}</span></div>)}
         </div>
       )}
+      {dm && <div className="pf-dm-copies">一式三聯：第一聯 存根　第二聯 客戶　第三聯 會計</div>}
       <footer className="pf-foot">列印：{currentUser()?.name}　{new Date().toLocaleString('zh-TW', { hour12: false })}</footer>
     </div>
   )
@@ -151,6 +154,53 @@ function Receipt({ f }) {
   )
 }
 
+// 電子發票證明聯：5.7cm 寬，依財政部格式（期別、號碼、隨機碼、總計、賣買方統編、一維條碼、左右 QR Code）
+function Code39({ text }) {
+  const { bars, width } = L.code39Bars(text)
+  return (
+    <svg className="pf-c39" viewBox={`-10 0 ${width + 20} 40`} preserveAspectRatio="none" role="img" aria-label={`條碼 ${text}`}>
+      <rect x="-10" width={width + 20} height="40" fill="#fff" />
+      {bars.map(([x, w], i) => <rect key={i} x={x} width={w} height="40" fill="#000" />)}
+    </svg>
+  )
+}
+function EInvoice({ f }) {
+  const e = f.e
+  const [qr, setQr] = useState(null)
+  useLayoutEffect(() => {
+    let alive = true
+    L.qrTexts(e).then((q) => alive && setQr(q))
+    return () => {
+      alive = false
+    }
+  }, [e.ref])
+  return (
+    <div className="pf-einv">
+      <style>{`@page receipt { size: 57mm ${e.lines.length * 5 + 120}mm; margin: 0; }`}</style>
+      <div className="pf-einv-proof">
+        <div className="pf-einv-co">{L.getSetting('company_name')}</div>
+        <div className="pf-einv-title">電子發票證明聯</div>
+        <div className="pf-einv-big">{e.period.label}</div>
+        <div className="pf-einv-big">{e.gui}</div>
+        <div className="pf-einv-row"><span>{e.date} {e.time}</span>{e.buyer && <span>格式 25</span>}</div>
+        <div className="pf-einv-row"><span>隨機碼 {e.random}</span><span>總計 {e.total}</span></div>
+        <div className="pf-einv-row"><span>賣方 {e.seller}</span>{e.buyer && <span>買方 {e.buyer}</span>}</div>
+        <Code39 text={L.barcodeText(e)} />
+        <div className="pf-einv-qr">
+          {qr ? <><QR text={qr.left} size={90} /><QR text={qr.right} size={90} /></> : <span>產生 QR Code…</span>}
+        </div>
+        {e.buyer && <div className="pf-einv-row"><span>銷售額 {e.amount}</span><span>稅額 {e.tax}</span></div>}
+      </div>
+      <div className="pf-einv-detail">
+        <div className="center">交易明細</div>
+        {e.lines.map((l, i) => <div key={i} className="pf-r-line"><span>{l.name} ×{l.qty}</span><span>{Math.round(l.qty * l.price)}</span></div>)}
+        <div className="pf-r-line"><b>總計</b><b>{e.total}</b></div>
+        {!/^[0-9a-fA-F]{32}$/.test(String(L.getSetting('einvoice_aes_key') || '')) && <div>※ 尚未設定電子發票金鑰，QR Code 的驗證欄位以 * 代替</div>}
+      </div>
+    </div>
+  )
+}
+
 export default function PrintView() {
   const { type, id } = useParams()
   const [sp, setSp] = useSearchParams()
@@ -174,6 +224,12 @@ export default function PrintView() {
         {type === 'label' && (
           <label className="row small">張數 <input className="input" style={{ width: 70 }} type="number" min="1" max="100" value={params.copies || 1} onChange={(e) => set('copies', e.target.value)} /></label>
         )}
+        {(f?.layout || 'a4') === 'a4' && (
+          <select className="input auto" aria-label="紙張" value={params.paper || 'a4'} onChange={(e) => set('paper', e.target.value)}>
+            <option value="a4">A4</option>
+            <option value="dm">中一刀三聯單（點陣印表機 9.5×5.5 吋）</option>
+          </select>
+        )}
         {type === 'statement' && (
           <>
             <input className="input auto" type="date" aria-label="起" value={params.from || L.today().slice(0, 7) + '-01'} onChange={(e) => set('from', e.target.value)} />
@@ -183,7 +239,7 @@ export default function PrintView() {
         )}
         <button className="btn primary" onClick={() => window.print()}>🖨 列印 / 存 PDF</button>
       </div>
-      {!f ? <div className="content empty">找不到這張單據</div> : f.layout === 'label' ? <Label f={f} /> : f.layout === 'receipt' ? <Receipt f={f} /> : <A4 f={f} />}
+      {!f ? <div className="content empty">找不到這張單據</div> : f.layout === 'label' ? <Label f={f} /> : f.layout === 'receipt' ? <Receipt f={f} /> : f.layout === 'einvoice' ? <EInvoice f={f} /> : <A4 f={f} dm={params.paper === 'dm'} />}
     </div>
   )
 }

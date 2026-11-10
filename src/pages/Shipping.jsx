@@ -121,6 +121,7 @@ function SlipModal({ id, onClose }) {
         <PrintButton type="shipment" id={s.id} label="出貨單" />
         <PrintButton type="pick_list" id={s.id} label="揀貨單" />
         <PrintButton type="ship_label" id={s.id} label={`嘜頭 ${s.boxes || 1} 張`} />
+        <PrintButton type="shipment" id={s.id} label="三聯單（點陣）" params={{ paper: 'dm' }} />
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>關閉</button>
       </>}>

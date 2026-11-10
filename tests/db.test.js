@@ -210,6 +210,12 @@ describe.skipIf(!hasPostgres)('雲端資料庫權限（PostgreSQL）', () => {
       expect(fails(uids['張師傅'], [{ ...over, row: { ...over.row, item_id: item('R003').id, qty: 1 } }])).toMatch(/不在工單 .* 的 BOM/)
     })
 
+    it('促銷活動只有業務 / CRM 主管能設定（活動價可以低於最低售價）', () => {
+      const promo = row('promotions', { name: '偷偷特價', start_date: L.today(), end_date: L.today(), lines: [{ item_id: item('F001').id, price: 1 }], active: true })
+      expect(fails(uids['陳業務'], [promo])).toMatch(/row-level security/)
+      expect(fails(uids['黃經理'], [promo])).toBe('')
+    })
+
     it('銷貨退回、門市大折扣、作廢、QC 改判、超量出貨、超額收款都會被擋', () => {
       const sh = all('shipments')[0]
       expect(fails(uids['陳業務'], [row('returns', { no: 'SR-X', kind: 'sales', shipment_id: sh.id, status: 'done', lines: [] })])).toMatch(/銷貨退回 .* 需要先核准/)

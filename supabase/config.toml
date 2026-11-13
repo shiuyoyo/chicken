@@ -1,0 +1,12 @@
+project_id = "food-erp"
+
+# Supabase Edge Functions 設定
+# LINE 與 Telegram 呼叫 webhook 時不會帶 Supabase 的 JWT，所以要關掉驗證（改用各自的簽章 / secret 驗證）
+[functions.line-webhook]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
+
+[functions.notify-dispatch]
+verify_jwt = true
